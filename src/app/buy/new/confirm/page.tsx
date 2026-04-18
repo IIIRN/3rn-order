@@ -1,23 +1,25 @@
 "use client";
 
-import MobileHeader from "@/components/mobile/MobileNav";
-import { Button } from "@/components/ui/Button";
-import { Card, Label } from "@/components/ui/FormElements";
-import { useOrderContext } from "@/context/OrderContext";
-import { useRouter } from "next/navigation";
-import { useBuyerAuth } from "@/context/BuyerContext";
-import { db } from "@/lib/firebase";
+import { useState } from "react";
 import {
-  collection,
   addDoc,
-  serverTimestamp,
-  query,
-  where,
+  collection,
   getDocs,
   limit,
+  query,
+  serverTimestamp,
+  where,
 } from "firebase/firestore";
-import { useState } from "react";
-import { Loader2, CheckCircle2, ChevronRight } from "lucide-react";
+import { CheckCircle2, ChevronRight, Loader2 } from "lucide-react";
+import MobileHeader from "@/components/mobile/MobileNav";
+import { useBuyerAuth } from "@/context/BuyerContext";
+import { useOrderContext } from "@/context/OrderContext";
+import { db } from "@/lib/firebase";
+import {
+  buildNewOrderMessage,
+  sendLineGroupNotification,
+} from "@/lib/lineNotify";
+import { useRouter } from "next/navigation";
 
 export default function SummaryPage() {
   const router = useRouter();
@@ -31,6 +33,7 @@ export default function SummaryPage() {
     if (orderData.items.length === 0) return;
 
     setSubmitting(true);
+
     try {
       let finalStoreId = orderData.storeId;
 
@@ -48,7 +51,7 @@ export default function SummaryPage() {
         } else {
           const newStoreRef = await addDoc(collection(db, "stores"), {
             name: orderData.storeName,
-            location: orderData.location || "",
+            location: orderData.storeLocation || "",
             phone: orderData.contact || "",
             type: "ทั่วไป",
             orders: 0,
@@ -69,6 +72,7 @@ export default function SummaryPage() {
           status: "to_buy",
         })),
         storeId: finalStoreId,
+        mapUrl: orderData.mapUrl || "",
         status: "pending",
         createdAt: serverTimestamp(),
         updatedAt: serverTimestamp(),
@@ -77,112 +81,172 @@ export default function SummaryPage() {
         requesterUsername: buyer.username || "",
       });
 
+      try {
+        const msg = buildNewOrderMessage({
+          requesterName: buyer.name,
+          storeName: orderData.storeName || "",
+          storeLocation: orderData.storeLocation || "",
+          location: orderData.location || "",
+          contact: orderData.contact || "",
+          note: orderData.note || "",
+          mapUrl: orderData.mapUrl || "",
+          itemCount: orderData.items.length,
+          items: orderData.items.map((item) => ({
+            name: item.name,
+            qty: Number(item.quantity) || 0,
+            unit: item.unit,
+          })),
+          mode: "new",
+        });
+        await sendLineGroupNotification("new_order", msg);
+      } catch (notifyErr) {
+        console.error("LINE notification error:", notifyErr);
+      }
+
       resetOrder();
       router.push("/buy");
     } catch (err) {
       console.error(err);
-      alert("Failed to send order");
+      alert("ส่งคำสั่งซื้อไม่สำเร็จ");
     } finally {
       setSubmitting(false);
     }
   };
 
   return (
-    <div className="mx-auto max-w-md space-y-5 pb-12">
-      <MobileHeader title="ยืนยันคำขอซื้อ" userName={buyer.name} />
+    <div className="mx-auto max-w-md space-y-4 pb-12">
+      <MobileHeader
+        title="ตรวจสอบและยืนยัน"
+        userName={buyer.lineDisplayName || buyer.name}
+        userAvatar={buyer.linePictureUrl}
+        userRole={buyer.role}
+        onBack={() => router.push("/buy/new/items")}
+      />
 
-      <div className="px-1">
-        <div className="eyebrow mb-2">Step 3 of 3</div>
-        <h2 className="text-2xl font-semibold tracking-[-0.03em] text-slate-900">
-          ตรวจสอบก่อนส่งคำขอ
-        </h2>
-        <p className="mt-2 text-sm leading-6 text-slate-500">
-          ตรวจข้อมูลร้านค้า รายการสินค้า และเพิ่มหมายเหตุถ้าจำเป็น
-        </p>
-      </div>
-
-      <Card className="space-y-5 border-slate-300 bg-white p-5">
-        <div className="grid gap-4 border-b border-slate-200 pb-5">
-          <div>
-            <Label>ร้านค้าที่ต้องการซื้อ</Label>
-            <div className="text-sm text-slate-900">
-              {orderData.storeName || "ไม่ระบุ"}
-            </div>
+      <div className="space-y-4 px-1.5">
+        <div className="space-y-1">
+          <div className="mb-1 flex items-center gap-2">
+            <div className="h-1.5 w-8 rounded-full bg-slate-900" />
+            <div className="h-1.5 w-8 rounded-full bg-slate-900" />
+            <div className="h-1.5 w-8 rounded-full bg-slate-900" />
           </div>
-          <div>
-            <Label>สถานที่จัดส่ง</Label>
-            <div className="text-sm text-slate-900">
-              {orderData.location || "ไม่ระบุ"}
-            </div>
-          </div>
-          <div>
-            <Label>ข้อมูลผู้ติดต่อ</Label>
-            <div className="text-sm text-slate-900">
-              {orderData.contact || "ไม่ระบุ"}
-            </div>
-          </div>
+          <h2 className="text-[20px] font-black leading-tight tracking-tight text-slate-900">
+            ยืนยันรายการสั่งซื้อ
+          </h2>
+          <p className="text-[12px] font-medium leading-relaxed text-slate-500">
+            ตรวจสอบข้อมูลให้ถูกต้องก่อนส่งให้เจ้าหน้าที่จัดซื้อ
+          </p>
         </div>
 
-        <div className="space-y-3">
-          <div className="flex items-center justify-between">
-            <Label className="mb-0">รายการสินค้า</Label>
-            <div className="text-xs text-slate-500">
-              {orderData.items.length} รายการ
+        <div className="space-y-5 rounded-2xl border-2 border-slate-100 bg-white p-5 shadow-sm">
+          <div className="grid grid-cols-2 gap-4 border-b border-slate-50 pb-5">
+            <div className="space-y-1">
+              <span className="text-[10px] font-black uppercase tracking-widest text-slate-400">
+                ร้านค้า
+              </span>
+              <p className="text-[14px] font-bold leading-tight text-slate-900">
+                {orderData.storeName || "ไม่ได้ระบุ"}
+              </p>
+            </div>
+            <div className="space-y-1">
+              <span className="text-[10px] font-black uppercase tracking-widest text-slate-400">
+                ติดต่อร้าน
+              </span>
+              <p className="text-[14px] font-bold leading-tight text-slate-900">
+                {orderData.contact || "-"}
+              </p>
             </div>
           </div>
 
-          <div className="space-y-2">
-            {orderData.items.map((item, index) => (
-              <div
-                key={`${item.name}-${index}`}
-                className="flex items-center justify-between rounded-md border border-slate-200 bg-slate-50 px-4 py-3"
-              >
-                <div className="text-sm text-slate-900">{item.name}</div>
-                <div className="text-xs text-slate-500">
-                  {item.quantity} {item.unit}
+          <div className="space-y-1.5">
+            <label className="px-0.5 text-[11px] font-black uppercase tracking-widest text-slate-500">
+              ที่อยู่ร้านค้า
+            </label>
+            <textarea
+              placeholder="ระบุที่อยู่ร้านค้า..."
+              className="min-h-[88px] w-full rounded-xl border-2 border-slate-50 bg-slate-50/50 px-4 py-3.5 text-[14px] font-bold text-slate-900 outline-none ring-0 transition-all focus:border-slate-300 focus:bg-white"
+              value={orderData.storeLocation}
+              onChange={(e) =>
+                setOrderData({ ...orderData, storeLocation: e.target.value })
+              }
+            />
+          </div>
+
+          <div className="space-y-1.5">
+            <label className="px-0.5 text-[11px] font-black uppercase tracking-widest text-slate-500">
+              ที่อยู่จัดส่ง
+            </label>
+            <textarea
+              placeholder="ระบุที่อยู่หรือจุดส่งของที่คนซื้อจะนำไปส่ง..."
+              className="min-h-[100px] w-full rounded-xl border-2 border-slate-50 bg-slate-50/50 px-4 py-3.5 text-[14px] font-bold text-slate-900 outline-none ring-0 transition-all focus:border-slate-300 focus:bg-white"
+              value={orderData.location}
+              onChange={(e) =>
+                setOrderData({ ...orderData, location: e.target.value })
+              }
+            />
+          </div>
+
+          <div className="space-y-3">
+            <div className="flex items-center justify-between px-0.5">
+              <span className="text-[11px] font-black uppercase tracking-[0.2em] text-slate-400">
+                รายการสินค้า ({orderData.items.length})
+              </span>
+            </div>
+
+            <div className="max-h-[250px] space-y-2 overflow-y-auto pr-1">
+              {orderData.items.map((item, index) => (
+                <div
+                  key={`${item.name}-${index}`}
+                  className="flex items-center justify-between rounded-xl border-2 border-slate-50 bg-slate-50/50 p-3.5"
+                >
+                  <div className="mr-2 truncate text-[14px] font-bold leading-tight text-slate-900">
+                    {item.name}
+                  </div>
+                  <div className="shrink-0 rounded-md border border-slate-100 bg-white px-2 py-0.5 text-[11px] font-black text-slate-600">
+                    {item.quantity} {item.unit}
+                  </div>
                 </div>
-              </div>
-            ))}
+              ))}
+            </div>
+          </div>
+
+          <div className="space-y-1.5 pt-1">
+            <label className="px-0.5 text-[11px] font-black uppercase tracking-widest text-slate-500">
+              หมายเหตุเพิ่มเติมถึงจัดซื้อ
+            </label>
+            <textarea
+              placeholder="ระบุรายละเอียดเพิ่มเติมถ้ามี เช่น ยี่ห้อสำรอง หรือความเร่งด่วน..."
+              className="min-h-[100px] w-full rounded-xl border-2 border-slate-50 bg-slate-50/50 px-4 py-3.5 text-[14px] font-bold text-slate-900 outline-none ring-0 transition-all focus:border-slate-300 focus:bg-white"
+              value={orderData.note}
+              onChange={(e) =>
+                setOrderData({ ...orderData, note: e.target.value })
+              }
+            />
           </div>
         </div>
 
-        <div>
-          <Label>หมายเหตุเพิ่มเติม</Label>
-          <textarea
-            placeholder="ข้อมูลเพิ่มเติมสำหรับผู้จัดซื้อ"
-            className="min-h-[96px] w-full rounded-md border border-slate-300 bg-white px-3.5 py-3 text-sm text-slate-900 outline-none transition-colors placeholder:text-slate-400 focus:border-slate-900 focus:ring-2 focus:ring-slate-900/10"
-            value={orderData.note}
-            onChange={(e) =>
-              setOrderData({ ...orderData, note: e.target.value })
-            }
-          />
+        <div className="flex gap-3 pt-2">
+          <button
+            onClick={() => router.push("/buy/new/items")}
+            className="flex-1 h-14 rounded-2xl border-2 border-slate-200 text-sm font-black uppercase tracking-widest text-slate-600 transition-all hover:bg-slate-50 active:scale-[0.98]"
+          >
+            ย้อนกลับ
+          </button>
+          <button
+            disabled={submitting || orderData.items.length === 0}
+            onClick={handleSendOrder}
+            className="flex h-14 flex-[1.8] items-center justify-center gap-2 rounded-2xl bg-slate-900 text-[15px] font-black uppercase tracking-[0.15em] text-white shadow-lg shadow-slate-900/15 transition-all active:scale-[0.98] disabled:grayscale disabled:opacity-30"
+          >
+            {submitting ? (
+              <Loader2 className="h-6 w-6 animate-spin" />
+            ) : (
+              <>
+                <CheckCircle2 className="h-5 w-5 stroke-[3px]" />
+                ยืนยันส่งคำสั่งซื้อ
+              </>
+            )}
+          </button>
         </div>
-      </Card>
-
-      <div className="flex gap-3">
-        <Button
-          onClick={() => router.push("/buy/new/items")}
-          variant="secondary"
-          className="flex-1"
-        >
-          ย้อนกลับ
-        </Button>
-        <Button
-          variant="accent"
-          disabled={submitting}
-          onClick={handleSendOrder}
-          className="flex-[1.5]"
-        >
-          {submitting ? (
-            <Loader2 className="h-4 w-4 animate-spin" />
-          ) : (
-            <>
-              <CheckCircle2 className="h-4 w-4" />
-              ส่งคำขอซื้อ
-              <ChevronRight className="h-4 w-4" />
-            </>
-          )}
-        </Button>
       </div>
     </div>
   );

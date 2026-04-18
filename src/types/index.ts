@@ -24,13 +24,16 @@ export interface Order {
   requesterName: string;
   requesterUsername?: string;
   storeName?: string;
+  storeLocation?: string;
   location?: string;
+  mapUrl?: string;
   contact?: string;
   items: Item[];
   status: "pending" | "buying" | "sorting" | "completed" | "cancelled";
   createdAt: Date | any;
   updatedAt: Date | any;
   buyerId?: string;
+  buyerName?: string;
   note?: string;
 }
 
@@ -41,6 +44,9 @@ export interface AppSettings {
   units: string[];
   lineNotifyEnabled: boolean;
   orderFilteringEnabled: boolean;
+  lineGroupId?: string;
+  notifyOnNewOrder?: boolean;
+  notifyOnCompleted?: boolean;
   updatedAt?: Date | any;
 }
 
@@ -55,4 +61,3 @@ export interface NetworkStore {
   createdAt?: any;
   updatedAt?: any;
 }
-

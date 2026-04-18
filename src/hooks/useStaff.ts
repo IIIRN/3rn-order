@@ -11,6 +11,9 @@ export interface StaffMember {
   phone: string;
   deals: number;
   lastActive?: any;
+  lineUserId?: string;
+  linePictureUrl?: string;
+  lineDisplayName?: string;
 }
 export function useStaff() {
   const [staff, setStaff] = useState<StaffMember[]>([]);

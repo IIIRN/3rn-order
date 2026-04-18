@@ -17,6 +17,9 @@ const DEFAULT_SETTINGS: AppSettings = {
   units: ["ชิ้น", "กล่อง", "มัด", "โหล", "ตัว", "ชุด", "กิโลกรัม"],
   lineNotifyEnabled: true,
   orderFilteringEnabled: false,
+  lineGroupId: "",
+  notifyOnNewOrder: true,
+  notifyOnCompleted: true,
 };
 
 export function useSettings() {

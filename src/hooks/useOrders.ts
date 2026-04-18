@@ -8,18 +8,24 @@ import {
   addDoc,
   updateDoc,
   doc,
+  deleteDoc,
   serverTimestamp,
   where,
+  limit,
 } from "firebase/firestore";
 import { Order, Item } from "@/types";
-export function useOrders(filterRole?: "orderer" | "buyer", userId?: string) {
+
+export function useOrders(filterRole?: "orderer" | "buyer", userId?: string, queryLimit: number = 0) {
   const [orders, setOrders] = useState<Order[]>([]);
   const [loading, setLoading] = useState(true);
   useEffect(() => {
     let q = query(collection(db, "orders"), orderBy("createdAt", "desc"));
     if (filterRole === "orderer" && userId) {
-      // Use simpler query to avoid composite index requirement
       q = query(collection(db, "orders"), where("requesterId", "==", userId));
+    }
+
+    if (queryLimit > 0) {
+      q = query(q, limit(queryLimit));
     }
 
     const unsubscribe = onSnapshot(
@@ -93,6 +99,15 @@ export function useOrders(filterRole?: "orderer" | "buyer", userId?: string) {
       throw error;
     }
   };
+  const deleteOrder = async (orderId: string) => {
+    try {
+      const orderRef = doc(db, "orders", orderId);
+      await deleteDoc(orderRef);
+    } catch (error) {
+      console.error("Error deleting order:", error);
+      throw error;
+    }
+  };
   return {
     orders,
     loading,
@@ -100,5 +115,6 @@ export function useOrders(filterRole?: "orderer" | "buyer", userId?: string) {
     updateOrderStatus,
     updateItemStatus,
     updateOrder,
+    deleteOrder,
   };
 }

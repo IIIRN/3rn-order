@@ -1,15 +1,19 @@
 "use client";
 
-import React, { useState } from "react";
+import { useState } from "react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
 import MobileHeader from "@/components/mobile/MobileNav";
 import { useBuyerAuth } from "@/context/BuyerContext";
 import { useOrderContext } from "@/context/OrderContext";
 import { useStores } from "@/hooks/useStores";
-import { Button } from "@/components/ui/Button";
-import { Card, Input } from "@/components/ui/FormElements";
-import { getStoreMapLink, getStoreOrderSeed, getStorePhoneLink } from "@/lib/storeUtils";
+import { cn } from "@/components/ui/Button";
+import { Input } from "@/components/ui/FormElements";
+import {
+  getStoreMapLink,
+  getStoreOrderSeed,
+  getStorePhoneLink,
+} from "@/lib/storeUtils";
 import {
   Store,
   MapPin,
@@ -20,6 +24,7 @@ import {
   Plus,
   Navigation,
   ShoppingCart,
+  Building2,
 } from "lucide-react";
 import { NetworkStore } from "@/types";
 
@@ -33,13 +38,15 @@ export default function StoreListPage() {
   if (!buyer) return null;
 
   const filteredStores = stores.filter((store) => {
-    const q = searchTerm.toLowerCase();
+    const query = searchTerm.toLowerCase();
     return (
-      store.name.toLowerCase().includes(q) ||
-      store.type?.toLowerCase().includes(q) ||
-      store.location?.toLowerCase().includes(q)
+      store.name.toLowerCase().includes(query) ||
+      store.type?.toLowerCase().includes(query) ||
+      store.location?.toLowerCase().includes(query)
     );
   });
+
+  const totalOrders = stores.reduce((sum, store) => sum + (store.orders || 0), 0);
 
   const handleSelectStore = (store: NetworkStore) => {
     resetOrder();
@@ -55,49 +62,89 @@ export default function StoreListPage() {
   };
 
   return (
-    <div className="mx-auto max-w-md space-y-5 pb-12">
+    <div className="mx-auto max-w-md space-y-3 pb-20">
       <MobileHeader
-        title="รายชื่อร้านค้า"
-        userName={buyer.name}
+        title="ระบบจัดการร้านค้า"
+        userName={buyer.lineDisplayName || buyer.name}
+        userAvatar={buyer.linePictureUrl}
+        userRole={buyer.role}
         onBack={() => router.push("/buy")}
       />
 
-      <div className="space-y-4">
-        <div className="relative">
-          <Search className="absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-slate-400" />
+      <div className="grid grid-cols-2 gap-2 px-1">
+        <div className="rounded-lg border border-blue-100 bg-blue-50/50 px-3.5 py-2.5 transition-all">
+          <div className="text-[10px] font-black uppercase tracking-wider text-blue-600">
+            ร้านค้าทั้งหมด
+          </div>
+          <div className="text-xl font-black text-blue-800">{stores.length}</div>
+        </div>
+        <div className="rounded-lg border border-slate-200 bg-white px-3.5 py-2.5 shadow-sm transition-all">
+          <div className="text-[10px] font-black uppercase tracking-widest text-slate-500">
+            ออร์เดอร์สะสม
+          </div>
+          <div className="text-xl font-black text-slate-900">{totalOrders}</div>
+        </div>
+      </div>
+
+      <div className="space-y-2 px-1">
+        <div className="group relative">
+          <div className="absolute left-3.5 top-1/2 flex -translate-y-1/2 items-center justify-center">
+            <Search className="h-4 w-4 text-slate-400 transition-colors group-focus-within:text-slate-700" />
+          </div>
           <Input
-            placeholder="ค้นหาชื่อร้านค้า หรือพื้นที่"
-            className="h-11 pl-10"
+            placeholder="ค้นหาชื่อร้านค้า ประเภท หรือที่อยู่ร้าน..."
+            className="h-11 rounded-xl border-2 border-slate-200 bg-white pl-10 text-[13px] text-slate-900 shadow-sm transition-all focus:border-slate-400 focus:ring-0"
             value={searchTerm}
             onChange={(e) => setSearchTerm(e.target.value)}
           />
         </div>
 
-        <div className="flex items-center justify-between gap-3">
-          <div>
-            <div className="eyebrow mb-2">Available Stores</div>
-            <div className="text-sm text-slate-500">{filteredStores.length} ร้านค้าในระบบ</div>
+        <Link href="/buy/stores/new" className="block">
+          <div className="flex w-full items-center justify-between rounded-xl bg-slate-900 px-4 py-2.5 shadow-lg shadow-slate-900/10 transition-all active:scale-[0.98]">
+            <div className="flex items-center gap-3">
+              <div className="flex h-8 w-8 items-center justify-center rounded-lg bg-white/20">
+                <Plus className="h-4 w-4 text-white" />
+              </div>
+              <div className="text-left">
+                <div className="text-[13px] font-black leading-tight text-white">
+                  เพิ่มร้านค้าใหม่
+                </div>
+                <div className="text-[9px] font-bold uppercase leading-none tracking-widest text-white/50">
+                  Register New Partner
+                </div>
+              </div>
+            </div>
+            <ChevronRight className="h-4 w-4 text-white/30" />
           </div>
-          <Link href="/buy/stores/new">
-            <Button variant="accent" size="sm" className="px-4">
-              <Plus className="h-4 w-4" />
-              เพิ่มร้านค้าใหม่
-            </Button>
-          </Link>
+        </Link>
+      </div>
+
+      <div className="space-y-2">
+        <div className="flex items-center gap-1.5 border-b border-slate-100 px-2 pb-1.5 pt-1">
+          <Building2 className="h-3 w-3 text-slate-600" />
+          <h2 className="text-[10px] font-black uppercase leading-none tracking-[0.2em] text-slate-600">
+            รายชื่อร้านค้า
+          </h2>
         </div>
 
-        <div className="space-y-3">
+        <div className="space-y-2.5">
           {loading ? (
-            <div className="flex flex-col items-center justify-center gap-3 py-20 text-slate-500">
-              <Loader2 className="h-8 w-8 animate-spin" />
-              <span className="text-sm">กำลังโหลดข้อมูลร้านค้า...</span>
+            <div className="animate-in fade-in flex flex-col items-center justify-center py-20 text-slate-400 transition-all">
+              <Loader2 className="h-8 w-8 animate-spin text-slate-300" />
+              <p className="mt-4 text-[12px] font-black leading-none tracking-widest">
+                กำลังโหลดข้อมูลชั่วคราว...
+              </p>
             </div>
           ) : filteredStores.length === 0 ? (
-            <div className="rounded-md border border-dashed border-slate-300 bg-white px-6 py-14 text-center">
-              <Store className="mx-auto mb-4 h-10 w-10 text-slate-300" />
-              <p className="text-sm text-slate-900">ไม่พบร้านค้าที่ตรงกับการค้นหา</p>
-              <p className="mt-1 text-xs text-slate-500">
-                คุณสามารถเพิ่มร้านค้าใหม่เข้าระบบได้ทันที
+            <div className="animate-in zoom-in-95 mx-1 rounded-2xl border-2 border-dashed border-slate-200 bg-white/70 py-20 text-center duration-300">
+              <div className="mx-auto mb-4 flex h-16 w-16 items-center justify-center rounded-full bg-slate-50">
+                <Store className="h-8 w-8 text-slate-200" />
+              </div>
+              <p className="text-[15px] font-black text-slate-900 underline decoration-primary decoration-4 underline-offset-4">
+                ไม่พบร้านค้าในระบบ
+              </p>
+              <p className="mt-3 text-[11px] font-black uppercase tracking-widest text-slate-500">
+                ลองค้นหาด้วยคำอื่น หรือเพิ่มร้านค้าใหม่
               </p>
             </div>
           ) : (
@@ -106,75 +153,85 @@ export default function StoreListPage() {
               const phoneLink = getStorePhoneLink(store);
 
               return (
-                <Card
+                <div
                   key={store.id}
                   onClick={() => handleOpenStore(store.id)}
-                  className="cursor-pointer space-y-4 border-slate-300 bg-white p-4 transition-colors hover:border-slate-900"
+                  className="animate-in slide-in-from-bottom-2 relative mx-1 cursor-pointer select-none rounded-xl border border-slate-200 border-l-4 border-l-primary bg-white p-3 shadow-sm transition-all duration-300 active:scale-[0.99] hover:border-slate-400"
                 >
-                  <div className="flex items-start justify-between gap-4">
-                    <div className="min-w-0">
-                      <div className="text-base text-slate-900">{store.name}</div>
-                      <div className="mt-1 text-xs uppercase tracking-[0.12em] text-slate-500">
+                  <div className="mb-2 flex items-center justify-between gap-3">
+                    <div className="min-w-0 flex-1">
+                      <div className="mb-1 truncate text-[16px] font-black leading-tight text-slate-950">
+                        {store.name}
+                      </div>
+                      <span className="inline-flex items-center rounded-md border border-slate-200 bg-slate-50 px-2 py-1 text-[9.5px] font-black uppercase leading-none tracking-widest text-slate-600">
                         {store.type || "ทั่วไป"}
+                      </span>
+                    </div>
+
+                    <div className="flex shrink-0 gap-1.5">
+                      <a
+                        href={phoneLink || "#"}
+                        onClick={(event) => {
+                          event.stopPropagation();
+                          if (!phoneLink) event.preventDefault();
+                        }}
+                        className={cn(
+                          "flex h-8 w-8 items-center justify-center rounded-lg border transition-all active:scale-90",
+                          phoneLink
+                            ? "border-slate-200 bg-white text-slate-600 shadow-sm"
+                            : "cursor-not-allowed border-slate-100 bg-slate-50 text-slate-200",
+                        )}
+                      >
+                        <Phone className="h-3.5 w-3.5" />
+                      </a>
+
+                      <a
+                        href={mapLink || "#"}
+                        target={mapLink ? "_blank" : undefined}
+                        onClick={(event) => {
+                          event.stopPropagation();
+                          if (!mapLink) event.preventDefault();
+                        }}
+                        className={cn(
+                          "flex h-8 w-8 items-center justify-center rounded-lg border transition-all active:scale-90",
+                          mapLink
+                            ? "border-slate-200 bg-white text-slate-600 shadow-sm"
+                            : "cursor-not-allowed border-slate-100 bg-slate-50 text-slate-200",
+                        )}
+                      >
+                        <Navigation className="h-3.5 w-3.5" />
+                      </a>
+                    </div>
+                  </div>
+
+                  <div className="mt-2 flex items-start justify-between gap-4 border-t border-slate-100 pt-2">
+                    <div className="min-w-0 flex-1 space-y-1.5">
+                      <div className="flex items-start gap-2 text-slate-700">
+                        <MapPin className="mt-0.5 h-3.5 w-3.5 shrink-0 text-slate-400" />
+                        <div className="min-w-0">
+                          <div className="text-[10px] font-black uppercase tracking-wide text-slate-400">
+                            ที่อยู่ร้านค้า
+                          </div>
+                          <div className="truncate text-[12px] leading-snug text-slate-900">
+                            {store.location || "ไม่ระบุที่อยู่ร้านค้า"}
+                          </div>
+                        </div>
+                      </div>
+
+                      <div className="flex items-center gap-2 text-slate-500">
+                        <Phone className="h-3 w-3 shrink-0 text-slate-300" />
+                        <span className="text-[11px] leading-none">
+                          {store.phone || "ไม่ระบุเบอร์ติดต่อ"}
+                        </span>
+                      </div>
+
+                      <div className="flex items-center gap-2 text-slate-500">
+                        <ShoppingCart className="h-3 w-3 shrink-0 text-slate-300" />
+                        <span className="text-[11px] leading-none">
+                          ออร์เดอร์สะสม {store.orders || 0}
+                        </span>
                       </div>
                     </div>
-                    <button
-                      type="button"
-                      onClick={(event) => {
-                        event.stopPropagation();
-                        handleOpenStore(store.id);
-                      }}
-                      className="flex h-10 w-10 shrink-0 items-center justify-center rounded-md border border-slate-300 bg-slate-50 text-slate-500 transition-colors hover:border-slate-900 hover:bg-slate-900 hover:text-white"
-                    >
-                      <ChevronRight className="h-4 w-4" />
-                    </button>
-                  </div>
-
-                  <div className="grid gap-3 text-sm text-slate-600">
-                    <div className="flex items-start gap-2">
-                      <MapPin className="mt-0.5 h-4 w-4 shrink-0 text-slate-400" />
-                      <span>{store.location || "ไม่ระบุสถานที่"}</span>
-                    </div>
-                    <div className="flex items-start gap-2">
-                      <Phone className="mt-0.5 h-4 w-4 shrink-0 text-slate-400" />
-                      <span>{store.phone || "ไม่ระบุเบอร์โทร"}</span>
-                    </div>
-                  </div>
-
-                  <div className="grid grid-cols-3 gap-2">
-                    <a
-                      href={phoneLink || "#"}
-                      onClick={(event) => {
-                        event.stopPropagation();
-                        if (!phoneLink) event.preventDefault();
-                      }}
-                      className={`flex items-center justify-center gap-2 rounded-md border px-3 py-2 text-xs transition-colors ${
-                        phoneLink
-                          ? "border-slate-300 bg-white text-slate-700 hover:border-slate-900 hover:text-slate-900"
-                          : "cursor-not-allowed border-slate-200 bg-slate-50 text-slate-400"
-                      }`}
-                    >
-                      <Phone className="h-3.5 w-3.5" />
-                      โทร
-                    </a>
-
-                    <a
-                      href={mapLink || "#"}
-                      target={mapLink ? "_blank" : undefined}
-                      rel={mapLink ? "noreferrer" : undefined}
-                      onClick={(event) => {
-                        event.stopPropagation();
-                        if (!mapLink) event.preventDefault();
-                      }}
-                      className={`flex items-center justify-center gap-2 rounded-md border px-3 py-2 text-xs transition-colors ${
-                        mapLink
-                          ? "border-slate-300 bg-white text-slate-700 hover:border-slate-900 hover:text-slate-900"
-                          : "cursor-not-allowed border-slate-200 bg-slate-50 text-slate-400"
-                      }`}
-                    >
-                      <Navigation className="h-3.5 w-3.5" />
-                      แผนที่
-                    </a>
 
                     <button
                       type="button"
@@ -182,13 +239,15 @@ export default function StoreListPage() {
                         event.stopPropagation();
                         handleSelectStore(store);
                       }}
-                      className="flex items-center justify-center gap-2 rounded-md border border-primary bg-primary px-3 py-2 text-xs text-slate-950 transition-colors hover:border-[#c7ef36] hover:bg-[#c7ef36]"
+                      className="flex h-9 shrink-0 items-center gap-2 rounded-lg border border-primary bg-primary px-4 text-slate-950 shadow-md shadow-primary/20 transition-all active:scale-95 hover:bg-[#b0f53d]"
                     >
                       <ShoppingCart className="h-3.5 w-3.5" />
-                      สั่งซื้อ
+                      <span className="text-[11px] font-black tracking-tight">
+                        สั่งสินค้า
+                      </span>
                     </button>
                   </div>
-                </Card>
+                </div>
               );
             })
           )}
@@ -197,4 +256,3 @@ export default function StoreListPage() {
     </div>
   );
 }
-

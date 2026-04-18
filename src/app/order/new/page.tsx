@@ -20,6 +20,8 @@ import { useOrders } from "@/hooks/useOrders";
 import { useSettings } from "@/hooks/useSettings";
 import { useRouter } from "next/navigation";
 
+import { Item } from "@/types";
+
 export default function NewOrderPage() {
   const router = useRouter();
   const { profile } = useLiff();
@@ -28,7 +30,7 @@ export default function NewOrderPage() {
 
   const [step, setStep] = useState(1);
   const [store, setStore] = useState("");
-  const [items, setItems] = useState<any[]>([]);
+  const [items, setItems] = useState<Item[]>([]);
   const [currentItem, setCurrentItem] = useState({
     name: "",
     qty: "",
@@ -107,7 +109,12 @@ export default function NewOrderPage() {
 
   return (
     <div className="pb-28">
-      <MobileHeader title="สร้างคำขอซื้อใหม่" />
+      <MobileHeader
+        title="สร้างคำขอซื้อใหม่"
+        userName={profile?.displayName || "ผู้ใช้งานระบบ"}
+        userAvatar={profile?.pictureUrl}
+        userRole="ผู้สั่งซื้อ"
+      />
 
       <div className="mx-auto max-w-md space-y-4">
         <div className="grid grid-cols-3 gap-2.5">

@@ -1,54 +1,179 @@
 "use client";
-import React, { useState, useEffect } from "react";
+
+import React, { useEffect, useState } from "react";
 import {
-  Search,
+  AdminEmptyState,
+  AdminPage,
+  AdminPrimaryButton,
+  AdminSecondaryButton,
+  AdminStatusChip,
+} from "@/components/admin/AdminUI";
+import {
+  Activity,
+  CheckCircle2,
+  ChevronLeft,
+  ChevronRight,
+  Clock,
+  Edit3,
+  Eye,
+  History,
   Loader2,
   Package,
-  Clock,
-  CheckCircle2,
-  ChevronRight,
-  Filter,
-  ShoppingCart,
-  ShoppingBag,
-  Truck,
   Plus,
+  Search,
+  ShoppingBag,
+  ShoppingCart,
+  Store,
   Trash2,
   User,
-  Store,
-  Edit3,
-  XCircle,
-  FileText
 } from "lucide-react";
-import { Button, cn } from "@/components/ui/Button";
-import { Card, Input, Label, Select } from "@/components/ui/FormElements";
+import { cn } from "@/components/ui/Button";
+import { Input, Label, Select } from "@/components/ui/FormElements";
 import { Modal } from "@/components/ui/Modal";
 import { useOrders } from "@/hooks/useOrders";
-import { useStaff } from "@/hooks/useStaff";
 import { useSettings } from "@/hooks/useSettings";
+import { useStaff } from "@/hooks/useStaff";
+import { useStores } from "@/hooks/useStores";
+import { Item, Order } from "@/types";
 import { format } from "date-fns";
 import { th } from "date-fns/locale";
-import { Order, Item } from "@/types";
 
-const STATUS_COLORS: Record<string, string> = {
-  pending: "bg-amber-50 text-amber-700 border-amber-200/50",
-  buying: "bg-blue-50 text-blue-700 border-blue-200/50",
-  sorting: "bg-purple-50 text-purple-700 border-purple-200/50",
-  completed: "bg-emerald-50 text-emerald-700 border-emerald-200/50",
-  cancelled: "bg-red-50 text-red-700 border-red-200/50",
+const STATUS_MAP = {
+  pending: { label: "รอยืนยัน", tone: "amber" as const },
+  buying: { label: "กำลังจัดซื้อ", tone: "blue" as const },
+  sorting: { label: "กำลังตรวจสอบ", tone: "purple" as const },
+  completed: { label: "เสร็จสิ้นแล้ว", tone: "emerald" as const },
+  cancelled: { label: "ยกเลิก", tone: "red" as const },
+};
+
+const ITEM_STATUS_MAP = {
+  to_buy: { label: "รอซื้อ", tone: "slate" as const },
+  bought: { label: "ซื้อแล้ว", tone: "emerald" as const },
+  cancelled: { label: "ยกเลิก", tone: "red" as const },
+  out_of_stock: { label: "หมด", tone: "amber" as const },
+};
+
+const META_LABEL_CLASS = "text-[10px] font-semibold uppercase tracking-[0.16em] text-slate-400";
+const PROGRESS_TONE_CLASS = {
+  amber: "bg-amber-500",
+  blue: "bg-blue-500",
+  purple: "bg-violet-500",
+  emerald: "bg-emerald-500",
+  red: "bg-red-500",
+  slate: "bg-slate-700",
+} as const;
+const ORDER_FILTERS = [
+  { key: "all", label: "ทั้งหมด" },
+  { key: "active", label: "กำลังทำงาน" },
+  { key: "completed", label: "เสร็จสิ้น" },
+  { key: "cancelled", label: "ยกเลิก" },
+] as const;
+
+const formatDateTime = (timestamp: any) => {
+  if (!timestamp) return "—";
+  try {
+    const date = timestamp.toDate ? timestamp.toDate() : new Date(timestamp);
+    return format(date, "dd MMM yy, HH:mm", { locale: th });
+  } catch {
+    return "—";
+  }
+};
+
+const formatDateOnly = (timestamp: any) => {
+  if (!timestamp) return "—";
+  try {
+    const date = timestamp.toDate ? timestamp.toDate() : new Date(timestamp);
+    return format(date, "dd MMM yy", { locale: th });
+  } catch {
+    return "—";
+  }
+};
+
+const formatTimeOnly = (timestamp: any) => {
+  if (!timestamp) return "—";
+  try {
+    const date = timestamp.toDate ? timestamp.toDate() : new Date(timestamp);
+    return format(date, "HH:mm", { locale: th });
+  } catch {
+    return "—";
+  }
+};
+
+const formatFullDate = (timestamp: any) => {
+  if (!timestamp) return "—";
+  try {
+    const date = timestamp.toDate ? timestamp.toDate() : new Date(timestamp);
+    return format(date, "EEEE, dd MMM yyyy", { locale: th });
+  } catch {
+    return "—";
+  }
+};
+
+const getOrderMetrics = (order: Order) => {
+  const boughtCount = order.items.filter((item) => item.status === "bought").length;
+  const cancelledCount = order.items.filter((item) => item.status === "cancelled" || item.status === "out_of_stock").length;
+  const pendingCount = order.items.filter((item) => item.status === "to_buy").length;
+  const previewItems = order.items.slice(0, 3);
+  const remainingItems = Math.max(order.items.length - previewItems.length, 0);
+  const resolvedCount = boughtCount + cancelledCount;
+  const completionPercent = order.items.length > 0 ? Math.round((resolvedCount / order.items.length) * 100) : 0;
+
+  return {
+    boughtCount,
+    cancelledCount,
+    pendingCount,
+    previewItems,
+    remainingItems,
+    resolvedCount,
+    completionPercent,
+  };
+};
+
+const buildOrderSearchText = (order: Order) =>
+  [
+    order.id,
+    order.requesterName,
+    order.requesterUsername,
+    order.storeName,
+    order.storeLocation,
+    order.location,
+    order.buyerName,
+    order.note,
+    ...order.items.map((item) => `${item.name} ${item.qty} ${item.unit}`),
+  ]
+    .filter(Boolean)
+    .join(" ")
+    .toLowerCase();
+
+const getOrderReference = (order: Order) => `#${order.id.slice(-6).toUpperCase()}`;
+
+const getRequesterInitials = (name?: string) => {
+  const initials = (name || "")
+    .trim()
+    .split(/\s+/)
+    .slice(0, 2)
+    .map((part) => part.charAt(0))
+    .join("")
+    .toUpperCase();
+
+  return initials || "--";
 };
 
 export default function OrdersPage() {
   const { settings, loading: settingsLoading } = useSettings();
-  const { orders, loading, updateOrderStatus, createOrder, updateOrder, updateItemStatus } = useOrders();
+  const { orders, loading, createOrder, updateOrder, deleteOrder } = useOrders();
   const { staff } = useStaff();
-  
-  // Modals state
+  const { stores } = useStores();
   const [isModalOpen, setIsModalOpen] = useState(false);
   const [isManageModalOpen, setIsManageModalOpen] = useState(false);
+  const [isDetailModalOpen, setIsDetailModalOpen] = useState(false);
   const [isEditing, setIsEditing] = useState(false);
   const [submitting, setSubmitting] = useState(false);
-  
-  // Forms state
+  const [searchQuery, setSearchQuery] = useState("");
+  const [isRequesterDropdownOpen, setIsRequesterDropdownOpen] = useState(false);
+  const [isStoreDropdownOpen, setIsStoreDropdownOpen] = useState(false);
+  const [statusFilter, setStatusFilter] = useState<(typeof ORDER_FILTERS)[number]["key"]>("all");
+  const [currentPage, setCurrentPage] = useState(1);
   const [formData, setFormData] = useState<Partial<Order>>({
     requesterId: "",
     requesterName: "",
@@ -57,71 +182,32 @@ export default function OrdersPage() {
     status: "pending",
     note: "",
   });
-
   const [managingOrder, setManagingOrder] = useState<Order | null>(null);
+  const [detailOrder, setDetailOrder] = useState<Order | null>(null);
   const [managedItems, setManagedItems] = useState<Item[]>([]);
   const [manageNote, setManageNote] = useState("");
+  const [selectedBuyerId, setSelectedBuyerId] = useState("");
+  const [newItem, setNewItem] = useState<Partial<Item>>({ name: "", qty: 1, unit: "ชิ้น" });
 
-  const [newItem, setNewItem] = useState<Partial<Item>>({
-    name: "",
-    qty: 1,
-    unit: "ชิ้น",
-  });
-
-  // Sync default unit
   useEffect(() => {
     if (!settingsLoading && settings.units.length > 0) {
-      setNewItem(prev => ({ ...prev, unit: prev.unit || settings.units[0] }));
+      setNewItem((prev) => ({ ...prev, unit: prev.unit || settings.units[0] }));
     }
   }, [settingsLoading, settings.units]);
 
-  const stats = [
-    {
-      label: "รายการทั้งหมด",
-      value: orders.length,
-      icon: Package,
-      color: "text-gray-400",
-      bg: "bg-gray-50 border border-gray-100",
-    },
-    {
-      label: "รอรับเรื่อง",
-      value: orders.filter((o) => o.status === "pending").length,
-      icon: Clock,
-      color: "text-amber-500",
-      bg: "bg-amber-50",
-    },
-    {
-      label: "กำลังจัดซื้อ",
-      value: orders.filter((o) => o.status === "buying").length,
-      icon: ShoppingCart,
-      color: "text-blue-500",
-      bg: "bg-blue-50",
-    },
-    {
-      label: "จัดส่งแล้ว",
-      value: orders.filter((o) => o.status === "completed").length,
-      icon: Truck,
-      color: "text-green-500",
-      bg: "bg-green-50",
-    },
-  ];
-
   const handleOpenAdd = () => {
     setIsEditing(false);
-    setFormData({
-      requesterId: "",
-      requesterName: "",
-      storeName: "",
-      items: [],
-      status: "pending",
-      note: "",
-    });
+    setFormData({ requesterId: "", requesterName: "", storeName: "", items: [], status: "pending", note: "" });
+    setIsRequesterDropdownOpen(false);
+    setIsStoreDropdownOpen(false);
     setIsModalOpen(true);
   };
 
   const handleOpenEdit = (order: Order) => {
     setIsEditing(true);
     setFormData(order);
+    setIsRequesterDropdownOpen(false);
+    setIsStoreDropdownOpen(false);
     setIsModalOpen(true);
   };
 
@@ -129,56 +215,72 @@ export default function OrdersPage() {
     setManagingOrder(order);
     setManagedItems([...order.items]);
     setManageNote(order.note || "");
+    setSelectedBuyerId("");
     setIsManageModalOpen(true);
   };
 
+  const handleOpenDetail = (order: Order) => {
+    setDetailOrder(order);
+    setIsDetailModalOpen(true);
+  };
+
+  const handleCloseDetail = () => {
+    setIsDetailModalOpen(false);
+    setDetailOrder(null);
+  };
+
   const handleAddItem = () => {
-    if (newItem.name && newItem.qty) {
-      const item: Item = {
-        id: `item_${Date.now()}`,
-        name: newItem.name as string,
-        qty: Number(newItem.qty),
-        unit: newItem.unit || settings.units[0] || "ชิ้น",
-        status: "to_buy",
-      };
-      setFormData({ ...formData, items: [...(formData.items || []), item] });
-      setNewItem({ name: "", qty: 1, unit: settings.units[0] || "ชิ้น" });
-    }
+    if (!newItem.name || !newItem.qty) return;
+    const item: Item = {
+      id: `item_${Date.now()}`,
+      name: newItem.name as string,
+      qty: Number(newItem.qty),
+      unit: newItem.unit || settings.units[0] || "ชิ้น",
+      status: "to_buy",
+    };
+    setFormData({ ...formData, items: [...(formData.items || []), item] });
+    setNewItem({ name: "", qty: 1, unit: settings.units[0] || "ชิ้น" });
   };
 
   const handleRemoveItem = (id: string) => {
-    setFormData({
-      ...formData,
-      items: (formData.items || []).filter((i) => i.id !== id),
-    });
+    setFormData({ ...formData, items: (formData.items || []).filter((item) => item.id !== id) });
   };
 
   const updateManagedItemStatus = (itemId: string, status: Item["status"]) => {
-    setManagedItems(prev => prev.map(item => 
-      item.id === itemId ? { ...item, status } : item
-    ));
+    setManagedItems((prev) =>
+      prev.map((item) => {
+        if (item.id !== itemId) return item;
+        const updatedItem: Item = { ...item, status };
+        if (status === "bought") {
+          updatedItem.boughtAt = new Date();
+        } else if (updatedItem.boughtAt) {
+          delete updatedItem.boughtAt;
+        }
+        return updatedItem;
+      }),
+    );
   };
 
   const saveManagedItems = async () => {
     if (!managingOrder) return;
+    const selectedBuyer = buyerOptions.find((member) => member.id === selectedBuyerId) ?? null;
+    if (!selectedBuyer) {
+      alert("กรุณาเลือกผู้จัดซื้อก่อนอัปเดตสถานะ");
+      return;
+    }
     setSubmitting(true);
     try {
-      // Check if all items are completed to auto-complete the order
-      const allCompleted = managedItems.length > 0 && managedItems.every(i => i.status !== "to_buy");
-      
-      let newStatus = managingOrder.status;
-      if (allCompleted) newStatus = "completed";
-      else newStatus = "buying";
-
+      const allDone = managedItems.length > 0 && managedItems.every((item) => item.status !== "to_buy");
+      const newStatus = allDone ? "completed" : "buying";
       await updateOrder(managingOrder.id, {
+        buyerId: selectedBuyer.id,
+        buyerName: selectedBuyer.name,
         items: managedItems,
         note: manageNote,
-        status: newStatus
+        status: newStatus as Order["status"],
       });
-      
       setIsManageModalOpen(false);
-    } catch (err) {
-      console.error(err);
+    } catch {
       alert("เกิดข้อผิดพลาดในการบันทึก");
     } finally {
       setSubmitting(false);
@@ -193,268 +295,918 @@ export default function OrdersPage() {
     }
     setSubmitting(true);
     try {
-      if (isEditing && formData.id) {
-        await updateOrder(formData.id, formData);
-      } else {
-        await createOrder(formData);
-      }
+      if (isEditing && formData.id) await updateOrder(formData.id, formData);
+      else await createOrder(formData);
       setIsModalOpen(false);
-    } catch (err) {
-      console.error(err);
+    } catch {
       alert("เกิดข้อผิดพลาดในการบันทึกข้อมูล");
     } finally {
       setSubmitting(false);
     }
   };
 
+  const handleDeleteOrder = async (id: string, requesterName: string) => {
+    if (!confirm(`คุณต้องการลบออร์เดอร์ของ ${requesterName} ใช่หรือไม่?`)) return;
+    try {
+      await deleteOrder(id);
+    } catch {
+      alert("เกิดข้อผิดพลาดในการลบออร์เดอร์");
+    }
+  };
+
+  const normalizedSearch = searchQuery.trim().toLowerCase();
+  const filterCounts = {
+    all: orders.length,
+    active: orders.filter((order) => order.status === "pending" || order.status === "buying" || order.status === "sorting").length,
+    completed: orders.filter((order) => order.status === "completed").length,
+    cancelled: orders.filter((order) => order.status === "cancelled").length,
+  };
+  const statusFilteredOrders = orders.filter((order) => {
+    if (statusFilter === "all") return true;
+    if (statusFilter === "active") return order.status === "pending" || order.status === "buying" || order.status === "sorting";
+    return order.status === statusFilter;
+  });
+  const filteredOrders = normalizedSearch
+    ? statusFilteredOrders.filter((order) => buildOrderSearchText(order).includes(normalizedSearch))
+    : statusFilteredOrders;
+  const pageSize = 9;
+  const totalPages = Math.max(1, Math.ceil(filteredOrders.length / pageSize));
+  const paginatedOrders = filteredOrders.slice((currentPage - 1) * pageSize, currentPage * pageSize);
+  const visiblePages = Array.from({ length: totalPages }, (_, index) => index + 1).filter(
+    (page) => page === 1 || page === totalPages || Math.abs(page - currentPage) <= 1,
+  );
+  const detailStatus = detailOrder ? STATUS_MAP[detailOrder.status as keyof typeof STATUS_MAP] ?? STATUS_MAP.pending : null;
+  const detailMetrics = detailOrder ? getOrderMetrics(detailOrder) : null;
+  const normalizedRequesterQuery = (formData.requesterName || "").trim().toLowerCase();
+  const filteredRequesterOptions = (normalizedRequesterQuery
+    ? staff.filter((member) =>
+        [member.name, member.username, member.phone]
+          .filter(Boolean)
+          .join(" ")
+          .toLowerCase()
+          .includes(normalizedRequesterQuery),
+      )
+    : []
+  ).slice(0, 6);
+  const matchedRequester =
+    staff.find((member) => {
+      const normalizedName = member.name.trim().toLowerCase();
+      const normalizedUsername = member.username?.trim().toLowerCase();
+
+      return normalizedName === normalizedRequesterQuery || normalizedUsername === normalizedRequesterQuery;
+    }) ?? null;
+  const normalizedStoreQuery = (formData.storeName || "").trim().toLowerCase();
+  const filteredStoreOptions = (normalizedStoreQuery
+    ? stores.filter((store) =>
+        [store.name, store.location, store.phone, store.type]
+          .filter(Boolean)
+          .join(" ")
+          .toLowerCase()
+          .includes(normalizedStoreQuery),
+      )
+    : []
+  ).slice(0, 6);
+  const matchedStore = stores.find((store) => store.name.trim().toLowerCase() === normalizedStoreQuery) ?? null;
+
+  const applySelectedStore = (storeName: string) => {
+    const selectedStore = stores.find((store) => store.name.trim().toLowerCase() === storeName.trim().toLowerCase()) ?? null;
+
+    setFormData((prev) => ({
+      ...prev,
+      storeName,
+      storeLocation: selectedStore?.location || "",
+      mapUrl: selectedStore?.mapUrl || "",
+      contact: selectedStore?.phone || "",
+    }));
+  };
+
+  const applySelectedRequester = (requesterValue: string) => {
+    const normalizedValue = requesterValue.trim().toLowerCase();
+    const selectedStaff =
+      staff.find((member) => {
+        const normalizedName = member.name.trim().toLowerCase();
+        const normalizedUsername = member.username?.trim().toLowerCase();
+
+        return normalizedName === normalizedValue || normalizedUsername === normalizedValue;
+      }) ?? null;
+
+    setFormData((prev) => ({
+      ...prev,
+      requesterId: selectedStaff?.id || "",
+      requesterName: selectedStaff?.name || requesterValue,
+      requesterUsername: selectedStaff?.username || "",
+    }));
+  };
+
+  const getRequesterProfile = (orderLike: Partial<Order>) =>
+    staff.find((member) => {
+      const normalizedMemberName = member.name.trim().toLowerCase();
+      const normalizedMemberUsername = member.username?.trim().toLowerCase();
+      const normalizedRequesterName = orderLike.requesterName?.trim().toLowerCase();
+      const normalizedRequesterUsername = orderLike.requesterUsername?.trim().toLowerCase();
+
+      return (
+        (orderLike.requesterId && member.id === orderLike.requesterId) ||
+        (normalizedRequesterUsername && normalizedMemberUsername === normalizedRequesterUsername) ||
+        (normalizedRequesterName && normalizedMemberName === normalizedRequesterName)
+      );
+    }) ?? null;
+  const detailRequesterProfile = detailOrder ? getRequesterProfile(detailOrder) : null;
+  const isAssignableBuyer = (role?: string) => {
+    const normalizedRole = role?.toLowerCase().trim() || "";
+
+    return (
+      normalizedRole === "admin" ||
+      normalizedRole === "administrator" ||
+      normalizedRole === "แอดมิน" ||
+      normalizedRole === "buyer" ||
+      normalizedRole === "staff" ||
+      normalizedRole === "พนักงานจัดซื้อ" ||
+      normalizedRole === "จัดซื้อ" ||
+      normalizedRole === "order"
+    );
+  };
+  const buyerOptions = staff.filter((member) => isAssignableBuyer(member.role));
+
+  useEffect(() => {
+    setCurrentPage(1);
+  }, [normalizedSearch, statusFilter]);
+
+  useEffect(() => {
+    if (currentPage > totalPages) {
+      setCurrentPage(totalPages);
+    }
+  }, [currentPage, totalPages]);
+
   if (settingsLoading) {
-    return <div className="flex justify-center py-20"><Loader2 className="animate-spin text-primary" /></div>;
+    return (
+      <div className="flex animate-pulse flex-col items-center justify-center py-40 text-slate-300">
+        <Loader2 className="mb-4 h-12 w-12 animate-spin" />
+        <span className="text-sm">กำลังดึงข้อมูลมาให้สักครู่...</span>
+      </div>
+    );
   }
 
   return (
-    <div className="space-y-8 animate-in fade-in duration-500 antialiased font-normal text-gray-900">
-      <div className="flex flex-col md:flex-row md:items-center justify-between gap-4">
-        <div className="flex flex-col">
-          <h3 className="text-2xl text-gray-900 uppercase leading-none">
-            จัดการรายการสั่งซื้อ
-          </h3>
-          <span className="text-sm text-gray-400 mt-1">
-            ระบบจัดการรายการสั่งซื้อเรียลไทม์
-          </span>
-        </div>
-        <div className="flex items-center gap-3">
-          <div className="relative group">
-            <Search className="absolute left-4 top-1/2 -translate-y-1/2 w-4 h-4 text-gray-900 group-focus-within:text-primary transition-colors" />
-            <Input
-              placeholder="ค้นหาบิลสั่งซื้อ..."
-              className="pl-12 pr-4 h-11 bg-white border border-gray-100 rounded-xl w-64 text-sm"
-            />
+    <>
+      <AdminPage className="gap-4">
+        <section className="relative overflow-hidden rounded-[18px] border border-amber-100/70 bg-[radial-gradient(circle_at_top_left,rgba(255,227,160,0.24),transparent_28%),radial-gradient(circle_at_top_right,rgba(153,246,228,0.08),transparent_20%),linear-gradient(135deg,#fffdf6_0%,#fff9ec_48%,#f7fcfa_100%)] px-3 py-3 shadow-[0_12px_28px_-26px_rgba(120,113,108,0.22)] lg:px-4">
+          <div className="relative z-10 flex flex-col gap-2.5 xl:flex-row xl:items-center xl:justify-between">
+            <div className="min-w-0 flex-1 space-y-1">
+              <div className="inline-flex items-center gap-2 rounded-full border border-amber-200 bg-white/85 px-2.5 py-1 text-[10px] font-medium tracking-[0.02em] text-amber-700">
+                <ShoppingCart className="h-3.5 w-3.5" />
+                Orders Dashboard
+              </div>
+              <div className="space-y-0.5">
+                <h1 className="text-[1.45rem] font-semibold tracking-[-0.045em] text-slate-950">จัดการออร์เดอร์</h1>
+                <p className="truncate text-[12px] text-slate-500">ภาพรวมคำสั่งซื้อและสถานะล่าสุด</p>
+              </div>
+            </div>
+
+            <div className="flex flex-wrap items-center gap-2 xl:flex-nowrap">
+              <div className="min-w-[132px] rounded-[10px] border border-white/85 bg-white/88 px-3 py-2 shadow-[0_8px_20px_-22px_rgba(15,23,42,0.24)]">
+                <div className="flex items-start justify-between gap-2">
+                  <div>
+                    <div className="text-[10px] font-semibold uppercase tracking-[0.16em] text-slate-400">รายการรวม</div>
+                    <div className="mt-1 text-[1.2rem] font-semibold leading-none tracking-[-0.04em] text-slate-950">{orders.length}</div>
+                  </div>
+                  <div className="flex h-7 w-7 items-center justify-center rounded-[8px] border border-slate-200 bg-slate-50 text-slate-600">
+                    <Package className="h-4 w-4" />
+                  </div>
+                </div>
+              </div>
+
+              <div className="min-w-[132px] rounded-[10px] border border-white/85 bg-white/88 px-3 py-2 shadow-[0_8px_20px_-22px_rgba(15,23,42,0.24)]">
+                <div className="flex items-start justify-between gap-2">
+                  <div>
+                    <div className="text-[10px] font-semibold uppercase tracking-[0.16em] text-slate-400">กำลังทำงาน</div>
+                    <div className="mt-1 text-[1.2rem] font-semibold leading-none tracking-[-0.04em] text-slate-950">{filterCounts.active}</div>
+                  </div>
+                  <div className="flex h-7 w-7 items-center justify-center rounded-[8px] border border-cyan-200 bg-cyan-50 text-cyan-700">
+                    <ShoppingCart className="h-4 w-4" />
+                  </div>
+                </div>
+              </div>
+
+              <div className="min-w-[132px] rounded-[10px] border border-white/85 bg-white/88 px-3 py-2 shadow-[0_8px_20px_-22px_rgba(15,23,42,0.24)]">
+                <div className="flex items-start justify-between gap-2">
+                  <div>
+                    <div className="text-[10px] font-semibold uppercase tracking-[0.16em] text-slate-400">เสร็จสิ้น</div>
+                    <div className="mt-1 text-[1.2rem] font-semibold leading-none tracking-[-0.04em] text-slate-950">{filterCounts.completed}</div>
+                  </div>
+                  <div className="flex h-7 w-7 items-center justify-center rounded-[8px] border border-emerald-200 bg-emerald-50 text-emerald-700">
+                    <History className="h-4 w-4" />
+                  </div>
+                </div>
+              </div>
+
+              <div className="min-w-[132px] rounded-[10px] border border-white/85 bg-white/88 px-3 py-2 shadow-[0_8px_20px_-22px_rgba(15,23,42,0.24)]">
+                <div className="flex items-start justify-between gap-2">
+                  <div>
+                    <div className="text-[10px] font-semibold uppercase tracking-[0.16em] text-slate-400">รอยืนยัน</div>
+                    <div className="mt-1 text-[1.2rem] font-semibold leading-none tracking-[-0.04em] text-slate-950">
+                      {orders.filter((order) => order.status === "pending").length}
+                    </div>
+                  </div>
+                  <div className="flex h-7 w-7 items-center justify-center rounded-[8px] border border-amber-200 bg-amber-50 text-amber-700">
+                    <Clock className="h-4 w-4" />
+                  </div>
+                </div>
+              </div>
+
+              <div className="min-w-[150px] rounded-[10px] border border-white/90 bg-white/80 px-3 py-1.5 text-right shadow-sm">
+                <div className="text-[10px] font-semibold uppercase tracking-[0.16em] text-slate-400">วันนี้</div>
+                <div className="mt-0.5 text-[12px] font-medium text-slate-700">{formatFullDate(new Date())}</div>
+              </div>
+
+              <AdminPrimaryButton
+                onClick={handleOpenAdd}
+                icon={Plus}
+                className="h-8 rounded-[8px] border-amber-300 bg-amber-300 px-3 text-[12px] font-semibold text-slate-950 shadow-[0_8px_16px_-14px_rgba(217,119,6,0.72)] hover:border-amber-400 hover:bg-amber-400 hover:text-slate-950"
+              >
+                สร้างบิลใหม่
+              </AdminPrimaryButton>
+            </div>
           </div>
-          <Button
-            onClick={handleOpenAdd}
-            className="rounded-xl h-11 px-6 text-sm bg-gray-900 text-white flex items-center gap-2 hover:bg-primary hover:text-black transition-all"
-          >
-            <Plus className="w-4 h-4" /> สร้างออเดอร์ใหม่
-          </Button>
-        </div>
-      </div>
+        </section>
 
-      <div className="grid grid-cols-2 lg:grid-cols-4 gap-4 text-gray-900 text-sm">
-        {stats.map((stat, i) => (
-          <Card key={i} className="p-6 flex items-center gap-4 bg-white border border-gray-100 rounded-xl transition-transform hover:translate-y-[-2px]">
-            <div className={cn("w-14 h-14 rounded-lg flex items-center justify-center", stat.bg)}>
-              <stat.icon className={cn("w-7 h-7", stat.color)} />
-            </div>
-            <div className="flex flex-col">
-              <span className="text-sm text-gray-400 uppercase">{stat.label}</span>
-              <span className="text-2xl text-gray-900">{stat.value}</span>
-            </div>
-          </Card>
-        ))}
-      </div>
+        <section className="overflow-visible bg-transparent shadow-none">
+          <div className="px-0 py-0">
+            <div className="flex flex-col gap-3 xl:flex-row xl:items-start xl:justify-between">
+              <div className="space-y-1">
+                <div className="text-[11px] font-semibold uppercase tracking-[0.18em] text-slate-400">Orders</div>
+                <h2 className="text-[1.3rem] font-semibold tracking-[-0.04em] text-slate-950">รายการออร์เดอร์</h2>
+                <p className="max-w-2xl text-[13px] leading-5 text-slate-600">
+                  เปลี่ยนจากตารางแน่น ๆ เป็นมุมมอง card board เพื่อเห็นผู้ขอ ร้านค้า สินค้าหลัก และสถานะรวมในหนึ่งสายตา
+                </p>
+              </div>
 
-      <Card className="bg-white border border-gray-100 rounded-xl p-0 overflow-hidden shadow-sm">
-        <div className="overflow-x-auto">
-          <table className="w-full text-left">
-            <thead>
-              <tr className="bg-gray-50 border border-gray-100/50">
-                <th className="px-8 py-5 text-xs text-gray-400 uppercase border-b border-gray-100">เลขที่ออเดอร์</th>
-                <th className="px-8 py-5 text-xs text-gray-400 uppercase border-b border-gray-100">พนักงานผู้สั่ง</th>
-                <th className="px-8 py-5 text-xs text-gray-400 uppercase border-b border-gray-100">ชื่อร้านค้า</th>
-                <th className="px-8 py-5 text-xs text-gray-400 uppercase border-b border-gray-100 text-center">รายการ</th>
-                <th className="px-8 py-5 text-xs text-gray-400 uppercase border-b border-gray-100 tracking-tight">สถานะปัจจุบัน</th>
-                <th className="px-8 py-5 text-xs text-gray-400 uppercase border-b border-gray-100 text-right">วันที่สร้าง</th>
-                <th className="px-8 py-5 text-xs text-gray-400 uppercase border-b border-gray-100 text-center">จัดการ</th>
-              </tr>
-            </thead>
-            <tbody className="divide-y divide-gray-50/50">
-              {loading ? (
-                <tr><td colSpan={7} className="px-8 py-32 text-center"><Loader2 className="w-10 h-10 text-primary animate-spin mx-auto" /></td></tr>
-              ) : orders.length === 0 ? (
-                <tr><td colSpan={7} className="px-8 py-40 text-center opacity-30">
-                  <ShoppingBag className="w-16 h-16 mx-auto mb-4 text-gray-200" />
-                  <span className="text-sm text-gray-400 uppercase tracking-tight">ยังไม่มีรายการสั่งซื้อ</span>
-                </td></tr>
-              ) : (
-                orders.map((order) => (
-                  <tr key={order.id} className="hover:bg-gray-50 transition-all font-medium">
-                    <td className="px-8 py-6 text-sm text-gray-900 tracking-tight">#{order.id.slice(-6).toUpperCase()}</td>
-                    <td className="px-8 py-6 text-sm text-gray-900">{order.requesterName}</td>
-                    <td className="px-8 py-6 text-sm text-gray-600">{order.storeName || "—"}</td>
-                    <td className="px-8 py-6 text-center text-sm text-gray-500 uppercase">{order.items.length} สินค้า</td>
-                    <td className="px-8 py-6">
-                       <button
-                        onClick={() => handleOpenManage(order)}
+              <div className="flex w-full flex-col gap-2 xl:w-auto xl:min-w-[21rem]">
+                <div className="flex flex-wrap items-center gap-1.5 rounded-[10px] border border-slate-200 bg-slate-50 p-1.5">
+                  {ORDER_FILTERS.map((filter) => {
+                    const isActive = statusFilter === filter.key;
+
+                    return (
+                      <button
+                        key={filter.key}
+                        type="button"
+                        onClick={() => setStatusFilter(filter.key)}
                         className={cn(
-                          "inline-flex items-center rounded-lg px-3 py-1 border text-[11px] font-bold tracking-tight uppercase transition-all whitespace-nowrap hover:scale-105 active:scale-95 shadow-sm",
-                          STATUS_COLORS[order.status] || "bg-gray-50 text-gray-600 border-gray-100"
+                          "inline-flex items-center gap-1.5 rounded-[8px] px-2.5 py-1.5 text-[13px] font-medium transition-all",
+                          isActive
+                            ? "bg-teal-700 text-white shadow-[0_10px_18px_-16px_rgba(15,118,110,0.75)]"
+                            : "bg-white text-slate-600 hover:bg-slate-100 hover:text-slate-900",
                         )}
                       >
-                        {order.status === "pending" && "รอยืนยัน"}
-                        {order.status === "buying" && "กำลังซื้อ"}
-                        {order.status === "completed" && "สำเร็จแล้ว"}
-                        {order.status === "cancelled" && "ยกเลิก"}
+                        <span>{filter.label}</span>
+                        <span className={cn("rounded-full px-2 py-0.5 text-xs", isActive ? "bg-white/15 text-white" : "bg-slate-100 text-slate-500")}>
+                          {filterCounts[filter.key]}
+                        </span>
                       </button>
-                    </td>
-                    <td className="px-8 py-6 text-right text-xs text-gray-500 uppercase">
-                      {order.createdAt ? format(order.createdAt.toDate(), "dd MMM yyyy", { locale: th }) : "—"}
-                    </td>
-                    <td className="px-8 py-6 text-center flex items-center justify-center gap-2">
-                       <Button onClick={() => handleOpenManage(order)} variant="secondary" className="rounded-xl h-10 px-4 bg-primary/10 text-primary hover:bg-primary hover:text-black border-none">
-                        <Edit3 className="w-4 h-4" />
-                      </Button>
-                      <Button onClick={() => handleOpenEdit(order)} variant="secondary" className="rounded-xl h-10 px-4 bg-gray-50 border-gray-100 text-gray-400 hover:text-gray-900">
-                        <ChevronRight className="w-4 h-4" />
-                      </Button>
-                    </td>
-                  </tr>
-                ))
-              )}
-            </tbody>
-          </table>
-        </div>
-      </Card>
+                    );
+                  })}
+                </div>
 
-      {/* Main Order Modal (Add/Edit) */}
-      <Modal isOpen={isModalOpen} onClose={() => setIsModalOpen(false)} title={isEditing ? "แก้ไขบิลสั่งซื้อ" : "สร้างบิลสั่งซื้อใหม่"}>
-        <form onSubmit={handleSubmit} className="space-y-6">
-          <div className="space-y-4">
-            <div className="space-y-2">
-              <Label className="text-sm text-gray-700">พนักงานผู้สั่งซื้อ</Label>
-              <Select required value={formData.requesterId} className="h-14 bg-gray-50 border-none rounded-xl text-sm" onChange={(e) => {
-                const s = staff.find(st => st.id === e.target.value);
-                setFormData({ ...formData, requesterId: e.target.value, requesterName: s?.name || "" });
-              }}>
-                <option value="">เลือกพนักงานผู้แนะนำ...</option>
-                {staff.map(s => <option key={s.id} value={s.id}>{s.name}</option>)}
-              </Select>
-            </div>
-            <div className="space-y-2">
-              <Label className="text-sm text-gray-700">ร้านค้า (หากระบุพิกัด)</Label>
-              <Input placeholder="ระบุชื่อร้านค้าพาร์ทเนอร์..." className="h-14 bg-gray-50 border-none rounded-xl text-sm" value={formData.storeName} onChange={(e) => setFormData({ ...formData, storeName: e.target.value })} />
-            </div>
-            <div className="pt-6 border-t border-gray-100 space-y-4 text-gray-900">
-              <Label className="text-gray-400 uppercase text-xs tracking-wider">รายการสินค้า</Label>
-              <div className="flex gap-2">
-                <Input placeholder="ชื่อสินค้า..." className="flex-[2] h-14 bg-gray-50 border-none rounded-xl text-sm" value={newItem.name} onChange={(e) => setNewItem({ ...newItem, name: e.target.value })} />
-                <Input type="number" placeholder="0" className="flex-1 h-14 bg-gray-50 border-none rounded-xl text-sm" value={newItem.qty} onChange={(e) => setNewItem({ ...newItem, qty: Number(e.target.value) })} />
-                <Select className="flex-1 h-14 bg-gray-50 border-none rounded-xl text-sm" value={newItem.unit} onChange={(e) => setNewItem({ ...newItem, unit: e.target.value })}>
-                  {settings.units.map(u => <option key={u} value={u}>{u}</option>)}
-                </Select>
-                <Button type="button" onClick={handleAddItem} className="bg-gray-900 w-14 h-14 p-0 flex items-center justify-center rounded-xl transition-all active:scale-95 shadow-lg shadow-gray-200">
-                  <Plus className="w-6 h-6 text-white" />
-                </Button>
+                <div className="flex flex-col gap-3 sm:flex-row">
+                  <div className="group relative flex-1">
+                    <Search className="absolute left-4 top-1/2 h-4 w-4 -translate-y-1/2 text-slate-400 transition-colors group-focus-within:text-slate-700" />
+                    <Input
+                      value={searchQuery}
+                      onChange={(e) => setSearchQuery(e.target.value)}
+                      placeholder="ค้นหาจากเลขบิล ผู้ขอ ร้านค้า ผู้จัดซื้อ หรือสินค้า"
+                      className="h-8.5 rounded-[10px] border-slate-200 bg-white pl-10 text-[13px] shadow-sm"
+                    />
+                  </div>
+                  <div className="flex items-center justify-between rounded-[10px] border border-slate-200 bg-white px-3 py-1.5 text-[13px] text-slate-600 sm:min-w-[8rem]">
+                    <span>แสดง</span>
+                    <span className="text-sm font-semibold text-slate-950">{filteredOrders.length}</span>
+                  </div>
+                </div>
               </div>
-              <div className="space-y-2 max-h-60 overflow-y-auto pr-1">
-                {(formData.items || []).map((item: Item) => (
-                  <div key={item.id} className="flex items-center justify-between p-4 bg-gray-50 rounded-xl border border-gray-100 group transition-all hover:bg-white hover:shadow-sm">
-                    <div className="flex flex-col">
-                      <span className="text-sm text-gray-900">{item.name}</span>
-                      <span className="text-xs text-gray-400 uppercase">{item.qty} {item.unit}</span>
+            </div>
+          </div>
+
+          {loading ? (
+            <div className="px-6 py-20">
+              <div className="flex flex-col items-center justify-center gap-3 text-slate-500">
+                <Loader2 className="h-6 w-6 animate-spin" />
+                <span className="text-sm">กำลังโหลดรายการออร์เดอร์</span>
+              </div>
+            </div>
+          ) : orders.length === 0 ? (
+            <AdminEmptyState icon={ShoppingBag} title="ยังไม่มีรายการสั่งซื้อ" description="เมื่อมีการสร้างบิลใหม่ รายการจะปรากฏในส่วนนี้โดยอัตโนมัติ" />
+          ) : filteredOrders.length === 0 ? (
+            <AdminEmptyState icon={Search} title="ไม่พบรายการที่ตรงกับคำค้นหา" description="ลองเปลี่ยนคำค้นหา หรือสลับตัวกรองสถานะด้านบน" />
+          ) : (
+            <>
+              <div className="grid gap-3 px-0 py-3 md:grid-cols-2 xl:grid-cols-3 lg:py-3.5">
+                {paginatedOrders.map((order) => {
+                  const status = STATUS_MAP[order.status as keyof typeof STATUS_MAP] ?? STATUS_MAP.pending;
+                  const { pendingCount, previewItems, remainingItems } = getOrderMetrics(order);
+                  const requesterProfile = getRequesterProfile(order);
+
+                  return (
+                    <article
+                      key={order.id}
+                      className="group flex h-full flex-col rounded-[12px] border border-slate-200 bg-white p-3 shadow-[0_8px_20px_-22px_rgba(15,23,42,0.16)] transition-all duration-200 hover:border-slate-300"
+                    >
+                      <div className="flex items-start justify-between gap-3">
+                        <div className="flex items-start gap-3">
+                          <div className="flex h-9 w-9 shrink-0 items-center justify-center overflow-hidden rounded-[8px] bg-teal-700 text-[13px] font-semibold text-white">
+                            {requesterProfile?.linePictureUrl ? (
+                              <img
+                                src={requesterProfile.linePictureUrl}
+                                alt={order.requesterName || "ผู้สั่งซื้อ"}
+                                className="h-full w-full object-cover"
+                              />
+                            ) : (
+                              getRequesterInitials(order.requesterName)
+                            )}
+                          </div>
+                          <div className="min-w-0">
+                            <div className="truncate text-[15px] font-semibold text-slate-950">{order.requesterName}</div>
+                            <div className="mt-1 text-xs font-medium text-slate-500">{getOrderReference(order)} / {order.storeName || "ทั่วไป"}</div>
+                            <div className="mt-2 inline-flex max-w-full items-center gap-1.5 rounded-full border border-teal-200 bg-teal-50 px-2.5 py-1 text-[11px] font-medium text-teal-800">
+                              <User className="h-3 w-3 shrink-0" />
+                              <span className="truncate">{order.buyerName || "ยังไม่มอบหมายผู้จัดซื้อ"}</span>
+                            </div>
+                          </div>
+                        </div>
+                        <AdminStatusChip label={status.label} tone={status.tone} className="rounded-full px-3 py-1 text-[11px] font-medium" />
+                      </div>
+
+                      <div className="mt-3 flex items-center justify-between text-[13px] text-slate-500">
+                        <span>{formatDateOnly(order.createdAt)}</span>
+                        <span>{formatTimeOnly(order.createdAt)} น.</span>
+                      </div>
+
+                      <div className="mt-3 grid gap-2 sm:grid-cols-2">
+                        <div className="rounded-[10px] border border-slate-200 bg-slate-50/75 p-3">
+                          <div className="text-[10px] font-semibold uppercase tracking-[0.18em] text-slate-400">ร้านค้า</div>
+                          <div className="mt-1.5 text-[15px] font-semibold tracking-[-0.02em] text-slate-950">{order.storeName || "ทั่วไป"}</div>
+                          <div className="mt-1 text-[13px] leading-5 text-slate-500">{order.storeLocation || "ไม่ระบุที่ตั้งร้าน"}</div>
+                        </div>
+                        <div className="rounded-[10px] border border-slate-200 bg-slate-50/75 p-3">
+                          <div className="text-[10px] font-semibold uppercase tracking-[0.18em] text-slate-400">จุดส่ง</div>
+                          <div className="mt-1.5 text-[15px] font-semibold tracking-[-0.02em] text-slate-950">{order.location || "ไม่ระบุ"}</div>
+                          <div className="mt-1 text-[13px] leading-5 text-slate-500">{order.contact || "ไม่มีข้อมูลติดต่อ"}</div>
+                        </div>
+                      </div>
+
+                      <div className="mt-3 flex-1">
+                        <div className="mb-2 flex items-center justify-between">
+                          <div>
+                            <div className="text-[10px] font-semibold uppercase tracking-[0.18em] text-slate-400">รายการสินค้า</div>
+                            <div className="mt-1 text-[15px] font-semibold tracking-[-0.02em] text-slate-950">{order.items.length} รายการ</div>
+                          </div>
+                          <span className="rounded-full border border-amber-200 bg-amber-50 px-3 py-1 text-xs font-medium text-amber-700">
+                            คงเหลือ {pendingCount}
+                          </span>
+                        </div>
+
+                        <div className="space-y-1.5">
+                          {previewItems.map((item) => (
+                            <div key={item.id} className="flex items-start justify-between gap-3 rounded-[10px] bg-slate-50 px-3 py-2">
+                              <div className="min-w-0">
+                                <div className="truncate text-[13px] font-medium text-slate-800">{item.name}</div>
+                                <div className="mt-1 text-xs text-slate-400">{item.qty} {item.unit}</div>
+                              </div>
+                              <AdminStatusChip
+                                label={(ITEM_STATUS_MAP[item.status as keyof typeof ITEM_STATUS_MAP] ?? ITEM_STATUS_MAP.to_buy).label}
+                                tone={(ITEM_STATUS_MAP[item.status as keyof typeof ITEM_STATUS_MAP] ?? ITEM_STATUS_MAP.to_buy).tone}
+                                className="shrink-0 rounded-full px-2.5 py-1 text-[10px]"
+                              />
+                            </div>
+                          ))}
+                          {remainingItems > 0 ? <div className="text-xs font-medium text-slate-400">+ เพิ่มเติมอีก {remainingItems} รายการ</div> : null}
+                        </div>
+                      </div>
+
+                      <div className="mt-3 flex items-center justify-end gap-2 border-t border-slate-200 pt-2.5">
+                        <AdminSecondaryButton
+                          onClick={() => handleOpenDetail(order)}
+                          icon={Eye}
+                          title="ดูรายละเอียด"
+                          aria-label="ดูรายละเอียด"
+                          className="h-8 w-8 rounded-[8px] justify-center border-slate-200 bg-slate-50 p-0 text-slate-700 hover:bg-slate-100"
+                        >
+                        </AdminSecondaryButton>
+                        <AdminSecondaryButton
+                          onClick={() => handleOpenManage(order)}
+                          icon={Edit3}
+                          title="จัดการ"
+                          aria-label="จัดการ"
+                          className="h-8 w-8 rounded-[8px] justify-center border-teal-700 bg-teal-700 p-0 text-white hover:bg-teal-800 hover:text-white"
+                        >
+                        </AdminSecondaryButton>
+                        <AdminSecondaryButton
+                          onClick={() => handleOpenEdit(order)}
+                          icon={ChevronRight}
+                          title="แก้ไข"
+                          aria-label="แก้ไข"
+                          className="h-8 w-8 rounded-[8px] justify-center p-0 text-slate-700"
+                        >
+                        </AdminSecondaryButton>
+                        <AdminSecondaryButton
+                          onClick={() => handleDeleteOrder(order.id, order.requesterName || "")}
+                          icon={Trash2}
+                          title="ลบ"
+                          aria-label="ลบ"
+                          className="h-8 w-8 rounded-[8px] justify-center border-red-200 bg-red-50 p-0 text-red-600 hover:bg-red-100"
+                        >
+                        </AdminSecondaryButton>
+                      </div>
+                    </article>
+                  );
+                })}
+              </div>
+
+              {filteredOrders.length > pageSize ? (
+                <div className="flex flex-col gap-3 px-0 pb-1 pt-1 sm:flex-row sm:items-center sm:justify-between">
+                  <div className="text-sm text-slate-500">
+                    แสดง {(currentPage - 1) * pageSize + 1}-{Math.min(currentPage * pageSize, filteredOrders.length)} จาก {filteredOrders.length} รายการ
+                  </div>
+                  <div className="flex items-center gap-2">
+                    <AdminSecondaryButton
+                      type="button"
+                      onClick={() => setCurrentPage((page) => Math.max(1, page - 1))}
+                      disabled={currentPage === 1}
+                      icon={ChevronLeft}
+                      className="h-9 rounded-[10px] px-3 text-xs disabled:opacity-50"
+                    >
+                      ก่อนหน้า
+                    </AdminSecondaryButton>
+                    <div className="flex items-center gap-1">
+                      {visiblePages.map((page, index) => {
+                        const previousPage = visiblePages[index - 1];
+                        const showGap = previousPage && page - previousPage > 1;
+
+                        return (
+                          <React.Fragment key={page}>
+                            {showGap ? <span className="px-1 text-sm text-slate-400">...</span> : null}
+                            <button
+                              type="button"
+                              onClick={() => setCurrentPage(page)}
+                              className={cn(
+                                "flex h-9 min-w-[2.25rem] items-center justify-center rounded-[10px] px-3 text-sm font-medium transition-colors",
+                                page === currentPage
+                                  ? "bg-teal-700 text-white"
+                                  : "border border-slate-200 bg-white text-slate-600 hover:bg-slate-100",
+                              )}
+                            >
+                              {page}
+                            </button>
+                          </React.Fragment>
+                        );
+                      })}
                     </div>
-                    <button type="button" onClick={() => handleRemoveItem(item.id)} className="text-gray-300 hover:text-red-500 p-2 transition-colors">
-                      <Trash2 className="w-4 h-4" />
-                    </button>
+                    <AdminSecondaryButton
+                      type="button"
+                      onClick={() => setCurrentPage((page) => Math.min(totalPages, page + 1))}
+                      disabled={currentPage === totalPages}
+                      icon={ChevronRight}
+                      className="h-9 rounded-[10px] px-3 text-xs disabled:opacity-50"
+                    >
+                      ถัดไป
+                    </AdminSecondaryButton>
+                  </div>
+                </div>
+              ) : null}
+            </>
+          )}
+        </section>
+      </AdminPage>
+
+      <Modal
+        isOpen={isModalOpen}
+        onClose={() => setIsModalOpen(false)}
+        title={isEditing ? "แก้ไขบิลสั่งซื้อ" : "สร้างบิลสั่งซื้อใหม่"}
+        className="max-w-2xl rounded-[14px] border-slate-200/90 p-4 shadow-[0_18px_48px_-40px_rgba(15,23,42,0.28)]"
+      >
+        <form onSubmit={handleSubmit} className="space-y-3.5">
+          <div className="space-y-3 pt-1">
+            <div className="space-y-1">
+              <Label className="text-sm text-slate-700">พนักงานผู้สั่งซื้อ</Label>
+              <div className="relative">
+                <Input
+                  required
+                  placeholder="ค้นหาชื่อพนักงาน, username หรือเบอร์โทร..."
+                  className="h-9 rounded-[10px] border border-slate-300 text-sm text-slate-900"
+                  value={formData.requesterName || ""}
+                  onFocus={() => setIsRequesterDropdownOpen(true)}
+                  onBlur={() => window.setTimeout(() => setIsRequesterDropdownOpen(false), 120)}
+                  onChange={(e) => {
+                    applySelectedRequester(e.target.value);
+                    setIsRequesterDropdownOpen(true);
+                  }}
+                />
+                {isRequesterDropdownOpen && normalizedRequesterQuery && filteredRequesterOptions.length > 0 ? (
+                  <div className="absolute left-0 right-0 top-[calc(100%+0.35rem)] z-20 overflow-hidden rounded-[10px] border border-slate-200 bg-white shadow-[0_16px_36px_-28px_rgba(15,23,42,0.25)]">
+                    <div className="max-h-56 overflow-y-auto p-1.5">
+                      {filteredRequesterOptions.map((member) => (
+                        <button
+                          key={member.id}
+                          type="button"
+                          onMouseDown={(event) => {
+                            event.preventDefault();
+                            applySelectedRequester(member.name);
+                            setIsRequesterDropdownOpen(false);
+                          }}
+                          className="flex w-full items-start justify-between gap-3 rounded-[8px] px-3 py-2 text-left transition-colors hover:bg-slate-50"
+                        >
+                          <div className="flex min-w-0 items-start gap-3">
+                            <div className="flex h-8 w-8 shrink-0 items-center justify-center overflow-hidden rounded-full bg-teal-700 text-xs font-semibold text-white">
+                              {member.linePictureUrl ? (
+                                <img
+                                  src={member.linePictureUrl}
+                                  alt={member.name}
+                                  className="h-full w-full object-cover"
+                                />
+                              ) : (
+                                getRequesterInitials(member.name)
+                              )}
+                            </div>
+                            <div className="min-w-0">
+                              <div className="truncate text-sm font-medium text-slate-900">{member.name}</div>
+                              <div className="mt-0.5 truncate text-xs text-slate-500">
+                                {member.username ? `@${member.username}` : "ไม่มี username"}
+                                {member.phone ? ` • ${member.phone}` : ""}
+                              </div>
+                            </div>
+                          </div>
+                          <span className="shrink-0 rounded-full bg-slate-100 px-2 py-0.5 text-[10px] font-medium text-slate-500">
+                            {member.role}
+                          </span>
+                        </button>
+                      ))}
+                    </div>
+                  </div>
+                ) : null}
+              </div>
+              {matchedRequester ? (
+                <div className="text-xs text-slate-500">
+                  พบพนักงานในระบบ: {matchedRequester.username ? `@${matchedRequester.username}` : "ไม่มี username"}
+                  {matchedRequester.phone ? ` • ${matchedRequester.phone}` : ""}
+                </div>
+              ) : null}
+            </div>
+            <div className="space-y-1">
+              <Label className="text-sm text-slate-700">ชื่อร้านค้าคู่ค้า</Label>
+              <div className="relative">
+                <Input
+                  placeholder="ค้นหาหรือระบุชื่อร้านค้า..."
+                  className="h-9 rounded-[10px] border border-slate-300 text-sm text-slate-900"
+                  value={formData.storeName || ""}
+                  onFocus={() => setIsStoreDropdownOpen(true)}
+                  onBlur={() => window.setTimeout(() => setIsStoreDropdownOpen(false), 120)}
+                  onChange={(e) => {
+                    applySelectedStore(e.target.value);
+                    setIsStoreDropdownOpen(true);
+                  }}
+                />
+                {isStoreDropdownOpen && normalizedStoreQuery && filteredStoreOptions.length > 0 ? (
+                  <div className="absolute left-0 right-0 top-[calc(100%+0.35rem)] z-20 overflow-hidden rounded-[10px] border border-slate-200 bg-white shadow-[0_16px_36px_-28px_rgba(15,23,42,0.25)]">
+                    <div className="max-h-56 overflow-y-auto p-1.5">
+                      {filteredStoreOptions.map((store) => (
+                        <button
+                          key={store.id}
+                          type="button"
+                          onMouseDown={(event) => {
+                            event.preventDefault();
+                            applySelectedStore(store.name);
+                            setIsStoreDropdownOpen(false);
+                          }}
+                          className="flex w-full items-start justify-between gap-3 rounded-[8px] px-3 py-2 text-left transition-colors hover:bg-slate-50"
+                        >
+                          <div className="min-w-0">
+                            <div className="truncate text-sm font-medium text-slate-900">{store.name}</div>
+                            <div className="mt-0.5 truncate text-xs text-slate-500">{store.location || "ไม่ระบุที่ตั้งร้าน"}</div>
+                          </div>
+                          {store.type ? (
+                            <span className="shrink-0 rounded-full bg-slate-100 px-2 py-0.5 text-[10px] font-medium text-slate-500">
+                              {store.type}
+                            </span>
+                          ) : null}
+                        </button>
+                      ))}
+                    </div>
+                  </div>
+                ) : null}
+              </div>
+              {matchedStore ? (
+                <div className="text-xs text-slate-500">
+                  พบร้านในระบบ: {matchedStore.location || "ไม่ระบุที่ตั้งร้าน"}
+                  {matchedStore.phone ? ` • ${matchedStore.phone}` : ""}
+                </div>
+              ) : null}
+            </div>
+            <div className="mt-3.5 space-y-3 border-t border-slate-200 pt-3.5">
+              <div className="flex items-center justify-between px-0.5">
+                <Label className="text-sm text-slate-900">รายการสินค้า</Label>
+                <span className="text-sm text-slate-600">{(formData.items || []).length} รายการ</span>
+              </div>
+              <div className="flex gap-1.5">
+                <Input
+                  placeholder="ชื่อสินค้า..."
+                  className="h-9 flex-[2] rounded-[10px] border border-slate-300 bg-white text-sm text-slate-900"
+                  value={newItem.name}
+                  onChange={(e) => setNewItem({ ...newItem, name: e.target.value })}
+                />
+                <Input
+                  type="number"
+                  placeholder="Qty"
+                  className="h-9 flex-[0.55] rounded-[10px] border border-slate-300 bg-white text-center text-sm text-slate-900"
+                  value={newItem.qty}
+                  onChange={(e) => setNewItem({ ...newItem, qty: Number(e.target.value) })}
+                />
+                <Select
+                  className="h-9 flex-1 rounded-[10px] border border-slate-300 bg-white text-sm text-slate-900"
+                  value={newItem.unit}
+                  onChange={(e) => setNewItem({ ...newItem, unit: e.target.value })}
+                >
+                  {settings.units.map((unit) => (
+                    <option key={unit} value={unit}>
+                      {unit}
+                    </option>
+                  ))}
+                </Select>
+                <AdminPrimaryButton type="button" onClick={handleAddItem} icon={Plus} className="h-9 w-9 shrink-0 rounded-[10px] p-0" />
+              </div>
+              <div className="custom-scrollbar flex max-h-[220px] flex-col space-y-1.5 overflow-y-auto pr-1 pt-1">
+                {(formData.items || []).length === 0 ? (
+                  <div className="rounded-[10px] border border-dashed border-slate-300 py-5 text-center text-sm text-slate-500">เพิ่มสินค้าอย่างน้อย 1 รายการ</div>
+                ) : null}
+                {(formData.items || []).map((item: Item) => (
+                  <div key={item.id} className="group flex items-center justify-between rounded-[10px] border border-slate-200 bg-white p-2.5 transition-all hover:border-slate-300">
+                    <div className="flex flex-col">
+                      <span className="text-sm leading-tight text-slate-950">{item.name}</span>
+                      <span className="mt-0.5 text-sm text-slate-600">
+                        {item.qty} {item.unit}
+                      </span>
+                    </div>
+                    <AdminSecondaryButton type="button" onClick={() => handleRemoveItem(item.id)} icon={Trash2} className="h-7 w-7 rounded-[8px] border-0 p-0 text-slate-400 hover:bg-red-50 hover:text-red-600" />
                   </div>
                 ))}
               </div>
             </div>
           </div>
-          <div className="flex gap-4 pt-6 border-t border-gray-100">
-            <Button type="button" variant="secondary" className="flex-1 h-14 rounded-xl border-gray-100 text-gray-500" onClick={() => setIsModalOpen(false)}>ยกเลิก</Button>
-            <Button disabled={submitting} className="flex-[2] h-14 bg-gray-900 text-white uppercase text-sm tracking-wider rounded-xl flex items-center justify-center gap-2 shadow-xl shadow-gray-200">
-              {submitting ? <Loader2 className="w-5 h-5 animate-spin" /> : <><CheckCircle2 className="w-4 h-4" /> {isEditing ? "อัปเดตข้อมูลบิล" : "ยืนยันสร้างออเดอร์"}</>}
-            </Button>
+          <div className="flex gap-2 border-t border-slate-200 pt-3.5">
+            <AdminSecondaryButton type="button" className="h-9 flex-1 rounded-[10px] text-xs text-slate-700" onClick={() => setIsModalOpen(false)}>
+              ยกเลิก
+            </AdminSecondaryButton>
+            <AdminPrimaryButton submitting={submitting} icon={CheckCircle2} className="h-9 flex-[2] rounded-[10px] text-xs">
+              {isEditing ? "อัปเดตบิล" : "สร้างออร์เดอร์"}
+            </AdminPrimaryButton>
           </div>
         </form>
       </Modal>
 
-      {/* Item Management Modal (Fulfillment) */}
-      <Modal 
-        isOpen={isManageModalOpen} 
-        onClose={() => setIsManageModalOpen(false)} 
-        title={managingOrder?.storeName || "รายละเอียดออเดอร์"}
-        showClose={false}
+      <Modal
+        isOpen={isDetailModalOpen}
+        onClose={handleCloseDetail}
+        title="รายละเอียดออร์เดอร์"
+        className="max-w-4xl rounded-[14px] border-slate-200/90 p-0 shadow-[0_20px_70px_-52px_rgba(15,23,42,0.34)]"
+        bodyClassName="max-h-[80vh] overflow-y-auto px-4 pb-4 pt-1"
       >
-        <div className="space-y-8">
-           {/* Header Info */}
-          <div className="flex justify-between items-start border-b border-gray-100 pb-6">
-            <div className="flex flex-col gap-1">
-              <h2 className="text-xl font-bold text-gray-900">{managingOrder?.storeName || "ร้านค้า"}</h2>
-              <span className="text-sm text-gray-400 font-medium">{managedItems.length} รายการ</span>
+        {detailOrder && detailStatus && detailMetrics ? (
+          <div className="space-y-3.5 pr-1">
+            <div className="rounded-[10px] border border-slate-200 bg-[linear-gradient(135deg,rgba(248,250,252,1)_0%,rgba(255,251,235,0.86)_52%,rgba(236,253,245,0.82)_100%)] px-4 py-4">
+              <div className="flex items-start justify-between gap-4">
+                <div className="space-y-1">
+                  <div className={META_LABEL_CLASS}>เลขที่บิล</div>
+                  <div className="text-[2rem] font-semibold leading-none tracking-[-0.04em] text-slate-950">{getOrderReference(detailOrder)}</div>
+                  <div className="pt-1 text-sm text-slate-500">สร้างเมื่อ {formatDateTime(detailOrder.createdAt)}</div>
+                </div>
+                <AdminStatusChip label={detailStatus.label} tone={detailStatus.tone} className="rounded-full px-3 py-1 text-xs font-medium" />
+              </div>
+              <div className="mt-5 space-y-2">
+                <div className="flex items-center justify-between text-sm text-slate-600">
+                  <span>ปิดงานแล้ว {detailMetrics.resolvedCount}/{detailOrder.items.length} รายการ</span>
+                  <span className="font-semibold text-slate-900">{detailMetrics.completionPercent}%</span>
+                </div>
+                <div className="h-2.5 overflow-hidden rounded-full bg-white/90">
+                  <div
+                    className={cn("h-full rounded-full transition-all", PROGRESS_TONE_CLASS[detailStatus.tone] || PROGRESS_TONE_CLASS.slate)}
+                    style={{ width: `${detailMetrics.completionPercent}%` }}
+                  />
+                </div>
+              </div>
+              <div className="mt-4 grid grid-cols-3 gap-2 text-center">
+                <div className="rounded-[10px] bg-white px-3 py-3 shadow-sm">
+                  <div className="text-xl font-semibold leading-none text-slate-950">{detailMetrics.pendingCount}</div>
+                  <div className="mt-1 text-[11px] font-medium uppercase tracking-[0.14em] text-slate-500">รอซื้อ</div>
+                </div>
+                <div className="rounded-[10px] bg-emerald-50 px-3 py-3 shadow-sm">
+                  <div className="text-xl font-semibold leading-none text-emerald-700">{detailMetrics.boughtCount}</div>
+                  <div className="mt-1 text-[11px] font-medium uppercase tracking-[0.14em] text-emerald-600">สำเร็จ</div>
+                </div>
+                <div className="rounded-[10px] bg-red-50 px-3 py-3 shadow-sm">
+                  <div className="text-xl font-semibold leading-none text-red-600">{detailMetrics.cancelledCount}</div>
+                  <div className="mt-1 text-[11px] font-medium uppercase tracking-[0.14em] text-red-500">ยกเลิก</div>
+                </div>
+              </div>
             </div>
-            <div className="text-right">
-              <span className="text-sm font-semibold text-gray-700">คุณ {managingOrder?.requesterName}</span>
+
+            <div className="grid gap-3 sm:grid-cols-2">
+              <div className="rounded-[10px] border border-slate-200 bg-white px-4 py-4 shadow-sm">
+                <div className={META_LABEL_CLASS}>ผู้ขอ</div>
+                <div className="mt-2 text-lg font-semibold tracking-[-0.02em] text-slate-950">{detailOrder.requesterName}</div>
+                <div className="mt-1 text-sm text-slate-500">{detailOrder.requesterUsername ? `@${detailOrder.requesterUsername}` : "ไม่มีชื่อผู้ใช้"}</div>
+                {detailRequesterProfile?.linePictureUrl ? (
+                  <div className="mt-3 flex items-center gap-3 rounded-[10px] bg-slate-50 px-3 py-2">
+                    <img
+                      src={detailRequesterProfile.linePictureUrl}
+                      alt={detailOrder.requesterName}
+                      className="h-10 w-10 rounded-full object-cover"
+                    />
+                    <div className="text-xs text-slate-500">รูปโปรไฟล์พนักงานจากระบบ</div>
+                  </div>
+                ) : null}
+              </div>
+              <div className="rounded-[10px] border border-slate-200 bg-white px-4 py-4 shadow-sm">
+                <div className={META_LABEL_CLASS}>ผู้จัดซื้อ</div>
+                <div className="mt-2 inline-flex items-center gap-2 rounded-full border border-teal-200 bg-teal-50 px-3 py-1.5 text-sm font-semibold text-teal-800">
+                  <User className="h-4 w-4" />
+                  {detailOrder.buyerName || "ยังไม่มอบหมาย"}
+                </div>
+                <div className="mt-2 text-sm text-slate-500">อัปเดตล่าสุด {formatDateTime(detailOrder.updatedAt)}</div>
+              </div>
+              <div className="rounded-[10px] border border-slate-200 bg-white px-4 py-4 shadow-sm">
+                <div className={META_LABEL_CLASS}>ร้านค้า</div>
+                <div className="mt-2 text-lg font-semibold tracking-[-0.02em] text-slate-950">{detailOrder.storeName || "ทั่วไป"}</div>
+                <div className="mt-1 text-sm leading-relaxed text-slate-500">ที่ตั้งร้าน: {detailOrder.storeLocation || "ไม่ระบุ"}</div>
+              </div>
+              <div className="rounded-[10px] border border-slate-200 bg-white px-4 py-4 shadow-sm">
+                <div className={META_LABEL_CLASS}>สถานที่จัดส่ง</div>
+                <div className="mt-2 text-lg font-semibold tracking-[-0.02em] text-slate-950">{detailOrder.location || "ไม่ระบุ"}</div>
+                <div className="mt-1 text-sm text-slate-500">{detailOrder.contact || "ไม่มีข้อมูลติดต่อเพิ่มเติม"}</div>
+              </div>
+            </div>
+
+            {detailOrder.note ? (
+              <div className="rounded-[10px] border border-slate-200 bg-white px-4 py-4 shadow-sm">
+                <div className={META_LABEL_CLASS}>บันทึกเพิ่มเติม</div>
+                <div className="mt-2 text-sm leading-7 text-slate-700">{detailOrder.note}</div>
+              </div>
+            ) : null}
+
+            <div className="rounded-[10px] border border-slate-200 bg-white px-4 py-4 shadow-sm">
+              <div>
+                <div className={META_LABEL_CLASS}>รายการสินค้า</div>
+                <div className="mt-1 text-lg font-semibold tracking-[-0.02em] text-slate-950">{detailOrder.items.length} รายการ</div>
+              </div>
+              <div className="mt-4 space-y-3">
+                {detailOrder.items.map((item) => {
+                  const itemStatus = ITEM_STATUS_MAP[item.status as keyof typeof ITEM_STATUS_MAP] ?? ITEM_STATUS_MAP.to_buy;
+
+                  return (
+                    <div key={item.id} className="rounded-[10px] border border-slate-200 bg-slate-50/70 px-4 py-4">
+                      <div className="flex items-start justify-between gap-3">
+                        <div className="min-w-0">
+                          <div className="text-base font-semibold text-slate-950">{item.name}</div>
+                          <div className="mt-1 text-sm text-slate-500">
+                            {item.qty} {item.unit}
+                          </div>
+                          {item.note ? <div className="mt-2 text-sm leading-relaxed text-slate-600">{item.note}</div> : null}
+                          {item.boughtAt ? <div className="mt-2 text-xs font-medium text-slate-500">ซื้อเมื่อ {formatDateTime(item.boughtAt)}</div> : null}
+                        </div>
+                        <AdminStatusChip label={itemStatus.label} tone={itemStatus.tone} className="shrink-0 rounded-full px-3 py-1 text-xs font-medium" />
+                      </div>
+                    </div>
+                  );
+                })}
+              </div>
+            </div>
+          </div>
+        ) : null}
+      </Modal>
+
+      <Modal
+        isOpen={isManageModalOpen}
+        onClose={() => setIsManageModalOpen(false)}
+        title="จัดการสถานะสินค้า"
+        className="max-w-3xl rounded-[14px] border-slate-200/90 p-4 shadow-[0_18px_54px_-42px_rgba(15,23,42,0.3)]"
+        bodyClassName="max-h-[78vh] overflow-y-auto pr-1"
+      >
+        <div className="space-y-4 pt-2">
+          <div className="flex items-center gap-3 border-b border-slate-200 pb-4">
+            <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-lg bg-slate-900 text-white">
+              <Store className="h-5 w-5" />
+            </div>
+            <div className="min-w-0">
+              <div className="truncate text-sm leading-tight text-slate-950">{managingOrder?.storeName || "ทั่วไป"}</div>
+              <div className="mt-0.5 flex items-center gap-1.5 text-sm text-slate-600">
+                <User className="h-3 w-3" />
+                ผู้ขอ: {managingOrder?.requesterName}
+              </div>
+              <div className="mt-1 text-xs text-slate-500">ขอซื้อเมื่อ {formatDateTime(managingOrder?.createdAt)}</div>
             </div>
           </div>
 
-          {/* Items List */}
-          <div className="space-y-6">
-             {managedItems.map((item) => (
-               <div key={item.id} className="flex items-center justify-between gap-4">
-                 <div className="flex-[2]">
-                    <span className="text-lg font-bold text-gray-900">{item.name}</span>
-                 </div>
-                 <div className="flex-1 text-center">
-                    <span className="text-lg font-medium text-gray-700">{item.qty} {item.unit}</span>
-                 </div>
-                 <div className="flex-[2] flex gap-2">
-                    <button 
-                      onClick={() => updateManagedItemStatus(item.id!, "bought")}
-                      className={cn(
-                        "flex-1 h-11 rounded-lg text-xs font-bold transition-all",
-                        item.status === "bought" ? "bg-emerald-500 text-white shadow-lg shadow-emerald-100" : "bg-emerald-500/10 text-emerald-600 border border-emerald-500/20"
-                      )}
-                    >
-                      เรียบร้อย
-                    </button>
-                    <button 
-                      onClick={() => updateManagedItemStatus(item.id!, "to_buy")}
-                      className={cn(
-                        "flex-1 h-11 rounded-lg text-xs font-bold transition-all",
-                        item.status === "to_buy" ? "bg-gray-300 text-gray-700" : "bg-gray-100 text-gray-400"
-                      )}
-                    >
-                      อัพเดท
-                    </button>
-                    <button 
-                      onClick={() => updateManagedItemStatus(item.id!, "cancelled")}
-                      className={cn(
-                        "flex-1 h-11 rounded-lg text-xs font-bold transition-all",
-                        item.status === "cancelled" ? "bg-red-400 text-white shadow-lg shadow-red-100" : "bg-red-400/10 text-red-500 border border-red-400/20"
-                      )}
-                    >
-                      ไม่มี
-                    </button>
-                 </div>
-               </div>
-             ))}
+          <div className="rounded-[12px] border border-teal-200 bg-[linear-gradient(135deg,rgba(240,253,250,1)_0%,rgba(236,253,245,0.95)_100%)] px-4 py-4">
+            <div className="flex flex-col gap-3 sm:flex-row sm:items-end sm:justify-between">
+              <div className="space-y-1">
+                <div className="text-[10px] font-semibold uppercase tracking-[0.16em] text-teal-700">ผู้จัดซื้อ</div>
+                <div className="text-sm font-semibold text-slate-950">ต้องเลือกผู้จัดซื้อทุกครั้งก่อนอัปเดตสถานะ</div>
+                <div className="text-xs text-slate-500">
+                  ผู้จัดซื้อเดิม: {managingOrder?.buyerName || "ยังไม่เคยกำหนด"}
+                </div>
+              </div>
+              <div className="w-full sm:max-w-xs">
+                <Select
+                  value={selectedBuyerId}
+                  onChange={(e) => setSelectedBuyerId(e.target.value)}
+                  className="h-10 rounded-[10px] border border-teal-300 bg-white text-sm text-slate-900"
+                >
+                  <option value="">เลือกผู้จัดซื้อ...</option>
+                  {buyerOptions.map((member) => (
+                    <option key={member.id} value={member.id}>
+                      {member.name}
+                    </option>
+                  ))}
+                </Select>
+              </div>
+            </div>
           </div>
 
-          {/* Note Section */}
-          <div className="space-y-3 pt-6 border-t border-gray-100">
-             <div className="flex items-center gap-2 text-gray-700 font-bold">
-                <FileText className="w-4 h-4" />
-                <span>บันทึก</span>
-             </div>
-             <textarea 
-               value={manageNote}
-               onChange={(e) => setManageNote(e.target.value)}
-               placeholder="ระบุหมายเหตุเพิ่มเติม..."
-               className="w-full h-32 bg-gray-50 border border-gray-100 rounded-2xl p-6 text-gray-600 focus:ring-2 focus:ring-primary/20 outline-none transition-all resize-none font-medium"
-             />
+          <div className="space-y-2">
+            <div className="flex items-center justify-between px-1">
+              <div className="text-sm text-slate-900">รายการสินค้า</div>
+              <span className="rounded-full bg-slate-100 px-2 py-0.5 text-xs text-slate-600">{managedItems.length} รายการ</span>
+            </div>
+            <div className="custom-scrollbar max-h-[340px] space-y-2 overflow-y-auto pr-1">
+              {managedItems.map((item) => (
+                <div key={item.id} className="rounded-xl border border-slate-200 bg-white p-2.5">
+                  <div className="flex items-center gap-2">
+                    <div className="min-w-0 flex-1">
+                      <div className="truncate text-sm leading-tight text-slate-950">{item.name}</div>
+                      <div className="mt-1 text-[11px] text-slate-500">{item.boughtAt ? `ซื้อสำเร็จ ${formatDateTime(item.boughtAt)}` : "ยังไม่บันทึกเวลาซื้อสำเร็จ"}</div>
+                    </div>
+                    <span className="shrink-0 rounded-md border border-slate-200 bg-slate-50 px-2 py-0.5 text-xs text-slate-700">
+                      {item.qty} {item.unit}
+                    </span>
+                    <div className="grid shrink-0 grid-cols-3 gap-1">
+                      <button
+                        type="button"
+                        onClick={() => updateManagedItemStatus(item.id, "bought")}
+                        className={cn(
+                          "h-8 min-w-[62px] rounded-lg border px-2 text-xs transition-all",
+                          item.status === "bought"
+                            ? "border-emerald-600 bg-emerald-600 text-white"
+                            : "border-slate-200 bg-white text-slate-500 hover:border-emerald-200 hover:text-emerald-700",
+                        )}
+                      >
+                        เรียบร้อย
+                      </button>
+                      <button
+                        type="button"
+                        onClick={() => updateManagedItemStatus(item.id, "to_buy")}
+                        className={cn(
+                          "h-8 min-w-[62px] rounded-lg border px-2 text-xs transition-all",
+                          item.status === "to_buy"
+                            ? "border-slate-800 bg-slate-800 text-white"
+                            : "border-slate-200 bg-white text-slate-500 hover:border-slate-300 hover:text-slate-700",
+                        )}
+                      >
+                        รอซื้อ
+                      </button>
+                      <button
+                        type="button"
+                        onClick={() => updateManagedItemStatus(item.id, "cancelled")}
+                        className={cn(
+                          "h-8 min-w-[62px] rounded-lg border px-2 text-xs transition-all",
+                          item.status === "cancelled"
+                            ? "border-red-600 bg-red-600 text-white"
+                            : "border-slate-200 bg-white text-slate-500 hover:border-red-200 hover:text-red-600",
+                        )}
+                      >
+                        ยกเลิก
+                      </button>
+                    </div>
+                  </div>
+                </div>
+              ))}
+            </div>
           </div>
 
-          {/* Save Button */}
-          <Button 
-            onClick={saveManagedItems}
-            disabled={submitting}
-            className="w-full h-16 bg-gray-900 hover:bg-black text-white text-lg font-bold rounded-2xl flex items-center justify-center gap-3 transition-all active:scale-95 mt-4"
-          >
-            {submitting ? <Loader2 className="animate-spin" /> : "เสร็จสิ้น"}
-          </Button>
+          <div className="space-y-1.5 border-t border-slate-200 pt-3">
+            <div className="flex items-center justify-between px-1">
+              <Label className="text-sm text-slate-900">บันทึกเพิ่มเติม</Label>
+              {manageNote ? <span className="rounded bg-slate-100 px-1.5 py-0.5 text-sm text-slate-600">Modified</span> : null}
+            </div>
+            <textarea
+              value={manageNote}
+              onChange={(e) => setManageNote(e.target.value)}
+              placeholder="ระบุรายละเอียดสำคัญ..."
+              className="h-20 w-full resize-none rounded-xl border border-slate-300 bg-slate-50 p-3 text-sm text-slate-900 outline-none transition-all placeholder:text-slate-400 focus:border-slate-400 focus:bg-white"
+            />
+          </div>
+
+          <AdminPrimaryButton type="button" onClick={saveManagedItems} submitting={submitting} icon={Activity} className="h-11 w-full text-sm">
+            บันทึกสถานะจัดซื้อ
+          </AdminPrimaryButton>
         </div>
       </Modal>
-    </div>
+    </>
   );
 }
